@@ -1,0 +1,189 @@
+{
+  "InteriorDesign": {
+    "category_type": "main",
+    "sub_categories": {
+      "Residential": {
+        "Apartment": {
+          "2BHK": {
+            "LivingRoom": {
+              "Bedroom1": {
+                "possibilities": {
+                  "Option_1": {
+                    "profile": {
+                      "occupant": "Single (Unmarried)",
+                      "age_group": "Young Adults (20-29 years)",
+                      "budget": "Medium"
+                    },
+                    "CarpentryWork": {
+                      "labour_cost_per_sqft": 250,
+                      "unit": "sqft",
+                      "sub_categories": {
+                        "Wardrobe": {
+                          "type": "3 Door Wardrobe",
+                          "finish": "Laminate Finish",
+                          "material_cost": 9500,
+                          "brand_name": "GreenLam",
+                          "size_specifications": "7ft H x 5ft W x 2ft D",
+                          "image_url": "https://example.com/images/3door-wardrobe-laminate.jpg",
+                          "material": {
+                            "MRPlywood": {
+                              "material_cost": 4200,
+                              "brand_name": "Century Ply",
+                              "grade": "MR",
+                              "features": {
+                                "Drawers": {
+                                  "count": 2,
+                                  "with_lock": true,
+                                  "digital_lock": false,
+                                  "material_cost": 800
+                                },
+                                "LEDProfileLight": {
+                                  "service_type": "Fitting",
+                                  "labour_cost_per_unit": 100,
+                                  "material_cost": 300,
+                                  "brand_name": "Philips"
+                                },
+                                "AutoHinges": {
+                                  "material_cost": 250,
+                                  "brand_name": "Hettich"
+                                },
+                                "HangerPipe": {
+                                  "type": "Oval",
+                                  "material": "SS",
+                                  "finish": "Black",
+                                  "material_cost": 400,
+                                  "brand_name": "Godrej"
+                                },
+                                "Handle": {
+                                  "shape": "Rectangle",
+                                  "material_cost": 150,
+                                  "brand_name": "Hafele"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "Option_2": {
+                    "profile": {
+                      "occupant": "Married Couple",
+                      "age_group": "Adults (30-40 years)",
+                      "budget": "High"
+                    },
+                    "CarpentryWork": {
+                      "labour_cost_per_sqft": 300,
+                      "unit": "sqft",
+                      "sub_categories": {
+                        "Wardrobe": {
+                          "type": "4 Door Sliding Wardrobe",
+                          "finish": "Acrylic Gloss Finish",
+                          "material_cost": 16500,
+                          "brand_name": "Merino",
+                          "size_specifications": "8ft H x 6ft W x 2.2ft D",
+                          "image_url": "https://example.com/images/4door-wardrobe-acrylic.jpg",
+                          "material": {
+                            "BWPlywood": {
+                              "material_cost": 6200,
+                              "brand_name": "GreenPly",
+                              "grade": "BWP",
+                              "features": {
+                                "Drawers": {
+                                  "count": 3,
+                                  "with_lock": true,
+                                  "digital_lock": true,
+                                  "material_cost": 1200
+                                },
+                                "LEDProfileLight": {
+                                  "service_type": "Fitting",
+                                  "labour_cost_per_unit": 120,
+                                  "material_cost": 450,
+                                  "brand_name": "Syska"
+                                },
+                                "SoftCloseChannels": {
+                                  "material_cost": 800,
+                                  "brand_name": "Hettich"
+                                },
+                                "HangerPipe": {
+                                  "type": "Round",
+                                  "material": "SS",
+                                  "finish": "Chrome",
+                                  "material_cost": 500,
+                                  "brand_name": "Ebco"
+                                },
+                                "Handle": {
+                                  "shape": "Edge Concealed",
+                                  "material_cost": 250,
+                                  "brand_name": "Blum"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "Option_3": {
+                    "profile": {
+                      "occupant": "Teenager",
+                      "age_group": "13-19 years",
+                      "budget": "Low"
+                    },
+                    "CarpentryWork": {
+                      "labour_cost_per_sqft": 180,
+                      "unit": "sqft",
+                      "sub_categories": {
+                        "Wardrobe": {
+                          "type": "2 Door Wardrobe",
+                          "finish": "Matte Paint Finish",
+                          "material_cost": 7200,
+                          "brand_name": "Asian Paints",
+                          "size_specifications": "6ft H x 4ft W x 2ft D",
+                          "image_url": "https://example.com/images/2door-wardrobe-matte.jpg",
+                          "material": {
+                            "CommercialPlywood": {
+                              "material_cost": 3200,
+                              "brand_name": "Kitply",
+                              "grade": "Commercial",
+                              "features": {
+                                "Drawers": {
+                                  "count": 1,
+                                  "with_lock": false,
+                                  "digital_lock": false,
+                                  "material_cost": 500
+                                },
+                                "LEDProfileLight": {
+                                  "service_type": "Fitting",
+                                  "labour_cost_per_unit": 80,
+                                  "material_cost": 200,
+                                  "brand_name": "Havells"
+                                },
+                                "HangerPipe": {
+                                  "type": "Round",
+                                  "material": "MS",
+                                  "finish": "Powder Coated",
+                                  "material_cost": 250,
+                                  "brand_name": "Generic"
+                                },
+                                "Handle": {
+                                  "shape": "Slim Line",
+                                  "material_cost": 100,
+                                  "brand_name": "Local"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

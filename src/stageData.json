@@ -1,0 +1,81 @@
+{
+  "stages": [
+    {
+      "id": "stage_1",
+      "name": "Main Category",
+      "fieldLabel": "Title of the Stage",
+      "fieldType": "dropdown",
+      "options": ["Job Posting", "Recruitment", "Onboarding"],
+      "attachments": [
+        { "label": "Attach Guidelines", "type": "file" },
+        { "label": "Attach Worksheet Checklist", "type": "file" },
+        { "label": "Attach Task Checklist", "type": "file" }
+      ],
+      "subCategories": [
+        {
+          "id": "cat_1_1",
+          "name": "Category",
+          "fieldLabel": "Position",
+          "fieldType": "dropdown",
+          "options": [
+            "Back Office",
+            "Sales Executive",
+            "Marketing Coordinator",
+            "Graphic Designer",
+            "Web Developer",
+            "Video Editor",
+            "HR Intern",
+            "Account Manager",
+            "Project Coordinator",
+            "Operations Lead"
+          ],
+          "attachments": [
+            {
+              "label": "Attach any supportive document (Recruitment Docs)",
+              "type": "file"
+            }
+          ],
+          "subCategories": [
+            {
+              "id": "subcat_1_1_1",
+              "name": "Sub-Category",
+              "fieldLabel": "Work Type",
+              "fieldType": "dropdown",
+              "options": ["Work From Home", "Onsite", "Hybrid"],
+              "subCategories": [
+                {
+                  "id": "subsubcat_1_1_1_1",
+                  "name": "Sub-Sub-Category",
+                  "fieldLabel": "Sub Position",
+                  "fieldType": "dropdown",
+                  "options": ["NA"]
+                },
+                {
+                  "id": "platform_1_1_1_2",
+                  "name": "Platform",
+                  "fieldLabel": "Platform",
+                  "fieldType": "dropdown",
+                  "options": ["Apna Hire", "Naukri", "LinkedIn", "Indeed"]
+                },
+                {
+                  "id": "location_1_1_1_3",
+                  "name": "Location",
+                  "fieldLabel": "Location",
+                  "fieldType": "dropdown",
+                  "options": ["India", "Surat", "Mumbai", "Delhi", "Bangalore"]
+                },
+                {
+                  "id": "experience_1_1_1_4",
+                  "name": "Experience",
+                  "fieldLabel": "Experience",
+                  "fieldType": "dropdown",
+                  "options": ["Fresher", "1 Year", "2 Years", "3+ Years"]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
