@@ -1,26 +1,24 @@
 import React, { useState } from 'react';
-import { MdAdd, MdExpandMore, MdChevronRight, MdEdit, MdSave, MdClose, MdDelete, MdContentCopy, MdSearch, MdDescription, MdCalendarToday, MdAccessTime, MdLabel, MdArrowBack, MdArrowForward, MdVisibility, MdFolder } from 'react-icons/md';
+import { MdAdd, MdExpandMore, MdChevronRight, MdEdit, MdSave, MdClose, MdDelete, MdContentCopy, MdSearch, MdDescription, MdLabel, MdArrowBack, MdArrowForward, MdFolder, MdFileUpload, MdFilterList, MdDownload, MdCheckCircle, MdWarning, MdSelectAll, MdRestartAlt, MdShowChart } from 'react-icons/md';
 
-const HierarchicalStageManager = () => {
-  const [data, setData] = useState({ stages: [], categories: [] });
-  const [newStage, setNewStage] = useState({
-    title: '', jobPosting: '', guidelinesFile: '', worksheetFile: '',
-    taskChecklistFile: '', worksheetFormat: '', supportiveDoc: '', selectedCategories: []
-  });
-  const [showStageForm, setShowStageForm] = useState(false);
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [expandedStages, setExpandedStages] = useState({});
-  const [addingCategory, setAddingCategory] = useState({
-    name: '', parentId: null, description: '', fields: [], fieldData: {},
-    tags: [], priority: 'medium', status: 'active'
-  });
+const CategoryManager = () => {
+  const [data, setData] = useState({ categories: [] });
+  const [addingCategory, setAddingCategory] = useState({ name: '', parentId: null, description: '', fields: [], tags: [], priority: 'medium', status: 'active' });
   const [editingCategory, setEditingCategory] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState({});
   const [categorySearch, setCategorySearch] = useState('');
-  const [showCategoryLogs, setShowCategoryLogs] = useState(false);
+  const [searchFilters, setSearchFilters] = useState({ type: 'name', status: 'all' });
   const [showFieldEditor, setShowFieldEditor] = useState(null);
-  const [viewFieldData, setViewFieldData] = useState(null);
   const [newField, setNewField] = useState({ name: '', type: 'text', required: false, options: [] });
+  const [selectedCategories, setSelectedCategories] = useState(new Set());
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [sortBy, setSortBy] = useState('name');
+  const [showStats, setShowStats] = useState(false);
+  const [activeWindow, setActiveWindow] = useState(null);
+  const [bulkTagsInput, setBulkTagsInput] = useState('');
+  const [bulkStatusInput, setBulkStatusInput] = useState('active');
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   const fieldTypes = [
     { value: 'text', label: 'Text Input' },
@@ -28,13 +26,28 @@ const HierarchicalStageManager = () => {
     { value: 'number', label: 'Number' },
     { value: 'email', label: 'Email' },
     { value: 'phone', label: 'Phone' },
-    { value: 'url', label: 'URL/Link' },
+    { value: 'url', label: 'URL' },
     { value: 'date', label: 'Date' },
     { value: 'dropdown', label: 'Dropdown' },
     { value: 'checkbox', label: 'Checkbox' },
-    { value: 'radio', label: 'Radio Button' },
-    { value: 'file', label: 'File Upload' }
+    { value: 'radio', label: 'Radio' },
+    { value: 'file', label: 'File' }
   ];
+
+  const getCategoryById = (id) => data.categories.find(cat => cat.id === id);
+  const getChildrenByParentId = (parentId) => data.categories.filter(cat => cat.parentId === parentId);
+  const getParentChain = (categoryId) => {
+    const chain = [];
+    let currentId = categoryId;
+    while (currentId) {
+      const category = getCategoryById(currentId);
+      if (!category) break;
+      chain.unshift(category);
+      currentId = category.parentId;
+    }
+    return chain;
+  };
+  const getAllCategoriesFlat = () => data.categories.map(cat => ({ ...cat, fullPath: getParentChain(cat.id).map(c => c.name).join(' > ') }));
 
   const regenerateCategoryIds = (categories) => {
     const updated = JSON.parse(JSON.stringify(categories));
@@ -63,78 +76,32 @@ const HierarchicalStageManager = () => {
     return `CAT${rootCount}`;
   };
 
-  const moveCategoryLevel = (categoryId, direction) => {
-    const category = data.categories.find(c => c.id === categoryId);
-    if (!category) return;
-
-    let newParentId = category.parentId;
-    if (direction === "right") {
-      const siblings = data.categories.filter(c => c.parentId === category.parentId).sort((a, b) => a.id.localeCompare(b.id));
-      const currentIndex = siblings.findIndex(c => c.id === categoryId);
-      if (currentIndex <= 0) {
-        alert("Cannot move right: No previous sibling");
-        return;
-      }
-      newParentId = siblings[currentIndex - 1].id;
-    } else if (direction === "left") {
-      if (!category.parentId) {
-        alert("Already at root level");
-        return;
-      }
-      const parent = data.categories.find(c => c.id === category.parentId);
-      newParentId = parent ? parent.parentId || null : null;
-    }
-
-    if (newParentId) {
-      let checkId = newParentId;
-      while (checkId) {
-        if (checkId === categoryId) {
-          alert("Circular hierarchy detected");
-          return;
-        }
-        const checkCat = data.categories.find(c => c.id === checkId);
-        checkId = checkCat ? checkCat.parentId : null;
-      }
-    }
-
-    const now = new Date().toISOString();
-    let updated = data.categories.map(cat =>
-      cat.id === categoryId
-        ? {
-            ...cat, parentId: newParentId, modifiedAt: now,
-            logs: [...(cat.logs || []), {
-              action: "Hierarchy Changed", timestamp: now,
-              details: direction === "right" ? "Moved right (indented)" : "Moved left (outdented)"
-            }]
-          }
-        : cat
-    );
-    updated = regenerateCategoryIds(updated);
-    setData(prev => ({ ...prev, categories: updated }));
-    alert(`Moved ${direction === "right" ? "right" : "left"}`);
-  };
-
   const addCategory = () => {
     if (!addingCategory.name.trim()) {
       alert('Enter category name');
       return;
     }
-    const categoryId = generateId(addingCategory.parentId);
     const now = new Date().toISOString();
+    const categoryId = generateId(addingCategory.parentId);
     const newCategory = {
       id: 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
-      categoryId, name: addingCategory.name.trim(), description: addingCategory.description.trim(),
-      parentId: addingCategory.parentId, fields: [...addingCategory.fields],
-      fieldData: {...addingCategory.fieldData}, tags: addingCategory.tags,
-      priority: addingCategory.priority, status: addingCategory.status,
-      createdAt: now, modifiedAt: now, createdBy: 'User',
-      logs: [{ action: 'Created', timestamp: now, details: `Category "${addingCategory.name}" created` }]
+      categoryId,
+      name: addingCategory.name.trim(),
+      description: addingCategory.description.trim(),
+      parentId: addingCategory.parentId,
+      fields: addingCategory.fields,
+      tags: addingCategory.tags,
+      priority: addingCategory.priority,
+      status: addingCategory.status,
+      createdAt: now,
+      modifiedAt: now,
+      logs: [{ action: 'Created', timestamp: now, details: 'Category created' }]
     };
     let updated = [...data.categories, newCategory];
     updated = regenerateCategoryIds(updated);
-    setData(prev => ({ ...prev, categories: updated }));
-    setAddingCategory({ name: '', parentId: null, description: '', fields: [], fieldData: {}, tags: [], priority: 'medium', status: 'active' });
-    alert('Category added!');
+    setData({ categories: updated });
+    setAddingCategory({ name: '', parentId: null, description: '', fields: [], tags: [], priority: 'medium', status: 'active' });
+    alert('Category added');
   };
 
   const updateCategory = () => {
@@ -143,40 +110,26 @@ const HierarchicalStageManager = () => {
       return;
     }
     const now = new Date().toISOString();
-    let updated = data.categories.map(cat =>
+    const updated = data.categories.map(cat =>
       cat.id === editingCategory.id
         ? {
-            ...cat, name: editingCategory.name.trim(), description: editingCategory.description.trim(),
-            parentId: editingCategory.parentId, fields: [...editingCategory.fields],
-            fieldData: {...editingCategory.fieldData}, tags: editingCategory.tags,
-            priority: editingCategory.priority, status: editingCategory.status, modifiedAt: now,
-            logs: [...cat.logs, { action: 'Modified', timestamp: now, details: 'Updated category details' }]
+            ...cat,
+            name: editingCategory.name.trim(),
+            description: editingCategory.description.trim(),
+            parentId: editingCategory.parentId,
+            fields: editingCategory.fields,
+            tags: editingCategory.tags,
+            priority: editingCategory.priority,
+            status: editingCategory.status,
+            modifiedAt: now,
+            logs: [...(cat.logs || []), { action: 'Modified', timestamp: now, details: 'Category updated' }]
           }
         : cat
     );
-    updated = regenerateCategoryIds(updated);
-    setData(prev => ({ ...prev, categories: updated }));
+    let final = regenerateCategoryIds(updated);
+    setData({ categories: final });
     setEditingCategory(null);
-    alert('Updated!');
-  };
-
-  const duplicateCategory = (categoryId) => {
-    const category = data.categories.find(c => c.id === categoryId);
-    if (!category) return;
-    const now = new Date().toISOString();
-    const duplicated = {
-      id: 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
-      categoryId: generateId(category.parentId), name: category.name + ' (Copy)',
-      description: category.description, parentId: category.parentId,
-      fields: [...category.fields], fieldData: {...category.fieldData},
-      tags: [...category.tags], priority: category.priority, status: category.status,
-      createdAt: now, modifiedAt: now, createdBy: 'User',
-      logs: [{ action: 'Duplicated', timestamp: now, details: `From "${category.name}"` }]
-    };
-    let updated = [...data.categories, duplicated];
-    updated = regenerateCategoryIds(updated);
-    setData(prev => ({ ...prev, categories: updated }));
-    alert('Duplicated!');
+    alert('Category updated');
   };
 
   const deleteCategory = (id) => {
@@ -184,91 +137,351 @@ const HierarchicalStageManager = () => {
       alert('Delete children first');
       return;
     }
-    if (window.confirm('Delete permanently?')) {
-      let updated = data.categories.filter(cat => cat.id !== id);
-      updated = regenerateCategoryIds(updated);
-      setData(prev => ({ ...prev, categories: updated }));
-      if (editingCategory?.id === id) setEditingCategory(null);
-      alert('Deleted!');
+    if (!window.confirm('Delete this category?')) return;
+    const updated = data.categories.filter(cat => cat.id !== id);
+    let final = regenerateCategoryIds(updated);
+    setData({ categories: final });
+    if (editingCategory?.id === id) setEditingCategory(null);
+  };
+
+  const moveCategoryLevel = (categoryId, direction) => {
+    const category = data.categories.find(c => c.id === categoryId);
+    if (!category) return;
+    let newParentId = category.parentId;
+    if (direction === 'right') {
+      const siblings = data.categories.filter(c => c.parentId === category.parentId).sort((a, b) => a.id.localeCompare(b.id));
+      const currentIndex = siblings.findIndex(c => c.id === categoryId);
+      if (currentIndex <= 0) return;
+      newParentId = siblings[currentIndex - 1].id;
+    } else if (direction === 'left') {
+      if (!category.parentId) return;
+      const parent = data.categories.find(c => c.id === category.parentId);
+      newParentId = parent?.parentId || null;
+    }
+    const now = new Date().toISOString();
+    let updated = data.categories.map(cat =>
+      cat.id === categoryId
+        ? { ...cat, parentId: newParentId, modifiedAt: now, logs: [...(cat.logs || []), { action: 'Moved', timestamp: now, details: direction === 'right' ? 'Indented' : 'Outdented' }] }
+        : cat
+    );
+    updated = regenerateCategoryIds(updated);
+    setData({ categories: updated });
+  };
+
+  const moveCategoryOrder = (categoryId, direction) => {
+    const category = data.categories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    const updated = JSON.parse(JSON.stringify(data.categories));
+    const idx = updated.findIndex(c => c.id === categoryId);
+    
+    if (idx === -1) return;
+    
+    if (direction === 'up' && idx > 0) {
+      const temp = updated[idx - 1];
+      updated[idx - 1] = updated[idx];
+      updated[idx] = temp;
+      setData({ categories: updated });
+    } else if (direction === 'down' && idx < updated.length - 1) {
+      const temp = updated[idx + 1];
+      updated[idx + 1] = updated[idx];
+      updated[idx] = temp;
+      setData({ categories: updated });
     }
   };
 
-  const addFieldToCategory = (categoryId) => {
+  const duplicateCategoryWithHierarchy = (categoryId) => {
+    const category = data.categories.find(c => c.id === categoryId);
+    if (!category) return;
+    const now = new Date().toISOString();
+    const duplicatedCategories = [];
+    const duplicateRecursive = (cat, newParentId) => {
+      const newId = 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+      const newCategoryId = generateId(newParentId);
+      const duplicated = {
+        id: newId,
+        categoryId: newCategoryId,
+        name: cat.name + ' (Copy)',
+        description: cat.description,
+        parentId: newParentId,
+        fields: JSON.parse(JSON.stringify(cat.fields || [])),
+        tags: [...(cat.tags || [])],
+        priority: cat.priority,
+        status: cat.status,
+        createdAt: now,
+        modifiedAt: now,
+        logs: [{ action: 'Duplicated', timestamp: now, details: `From "${cat.name}"` }]
+      };
+      duplicatedCategories.push(duplicated);
+      const children = getChildrenByParentId(cat.id);
+      children.forEach(child => duplicateRecursive(child, newId));
+    };
+    duplicateRecursive(category, category.parentId);
+    let updated = [...data.categories, ...duplicatedCategories];
+    updated = regenerateCategoryIds(updated);
+    setData({ categories: updated });
+  };
+
+  const bulkEditStatus = () => {
+    if (selectedCategories.size === 0) {
+      alert('Select categories first');
+      return;
+    }
+    const now = new Date().toISOString();
+    const updated = data.categories.map(cat => {
+      if (selectedCategories.has(cat.id)) {
+        return {
+          ...cat,
+          status: bulkStatusInput,
+          modifiedAt: now,
+          logs: [...(cat.logs || []), { action: 'Bulk Edit', timestamp: now, details: `Status: ${bulkStatusInput}` }]
+        };
+      }
+      return cat;
+    });
+    setData({ categories: updated });
+    setSelectedCategories(new Set());
+    alert('Status updated');
+  };
+
+  const bulkAddTags = () => {
+    if (selectedCategories.size === 0) {
+      alert('Select categories first');
+      return;
+    }
+    const tags = bulkTagsInput.split(',').map(t => t.trim()).filter(t => t);
+    if (tags.length === 0) return;
+    const now = new Date().toISOString();
+    const updated = data.categories.map(cat => {
+      if (selectedCategories.has(cat.id)) {
+        const combinedTags = [...new Set([...cat.tags, ...tags])];
+        return { ...cat, tags: combinedTags, modifiedAt: now, logs: [...(cat.logs || []), { action: 'Tags Added', timestamp: now, details: `Added: ${tags.join(', ')}` }] };
+      }
+      return cat;
+    });
+    setData({ categories: updated });
+    setBulkTagsInput('');
+    alert('Tags added');
+  };
+
+  const bulkDelete = () => {
+    if (selectedCategories.size === 0) {
+      alert('Select categories first');
+      return;
+    }
+    if (!window.confirm(`Delete ${selectedCategories.size} categories?`)) return;
+
+    const deletedCount = selectedCategories.size;
+    const now = new Date().toISOString();
+    
+    let updated = data.categories.filter(cat => !selectedCategories.has(cat.id));
+    updated = regenerateCategoryIds(updated);
+    
+    // Create a log entry in the first remaining category or create a system log
+    if (updated.length > 0) {
+      updated[0] = {
+        ...updated[0],
+        logs: [
+          ...(updated[0].logs || []),
+          { action: 'System', timestamp: now, details: `Bulk deleted ${deletedCount} categories` }
+        ]
+      };
+    }
+    
+    setData({ categories: updated });
+    setSelectedCategories(new Set());
+    alert(`Deleted ${deletedCount} categories`);
+  };
+
+  const addFieldToCategory = () => {
     if (!newField.name.trim()) {
       alert('Enter field name');
       return;
     }
     const field = {
-      id: 'field_' + Date.now().toString(36),
-      name: newField.name.trim(), type: newField.type, required: newField.required,
+      id: 'field_' + Date.now(),
+      name: newField.name.trim(),
+      type: newField.type,
+      required: newField.required,
       options: (newField.type === 'dropdown' || newField.type === 'radio') ? newField.options.filter(o => o.trim()) : []
     };
-    if (editingCategory?.id === categoryId) {
-      setEditingCategory(prev => ({ ...prev, fields: [...prev.fields, field] }));
-    } else if (addingCategory.parentId !== null || addingCategory.name) {
+    if (editingCategory) {
+      setEditingCategory(prev => ({ ...prev, fields: [...(prev.fields || []), field] }));
+    } else {
       setAddingCategory(prev => ({ ...prev, fields: [...prev.fields, field] }));
     }
     setNewField({ name: '', type: 'text', required: false, options: [] });
-    alert('Field added!');
   };
 
-  const removeFieldFromCategory = (categoryId, fieldId) => {
-    if (editingCategory?.id === categoryId) {
+  const removeField = (fieldId) => {
+    if (editingCategory) {
       setEditingCategory(prev => ({ ...prev, fields: prev.fields.filter(f => f.id !== fieldId) }));
-    } else if (addingCategory.fields.length > 0) {
+    } else {
       setAddingCategory(prev => ({ ...prev, fields: prev.fields.filter(f => f.id !== fieldId) }));
     }
-  };
-
-  const renderFieldInput = (field, value, onChange) => {
-    const cls = "w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none text-sm";
-    switch (field.type) {
-      case 'textarea': return <textarea value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} rows="3" />;
-      case 'number': return <input type="number" value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} />;
-      case 'email': return <input type="email" value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} />;
-      case 'phone': return <input type="tel" value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} />;
-      case 'url': return <input type="url" value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} placeholder="https://..." />;
-      case 'date': return <input type="date" value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} />;
-      case 'dropdown': return <select value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls}><option>Select</option>{field.options.map((o, i) => <option key={i}>{o}</option>)}</select>;
-      case 'checkbox': return <input type="checkbox" checked={value || false} onChange={(e) => onChange(field.id, e.target.checked)} />;
-      case 'radio': return <div className="space-y-2">{field.options.map((o, i) => <label key={i}><input type="radio" name={field.id} value={o} checked={value === o} onChange={(e) => onChange(field.id, e.target.value)} /> {o}</label>)}</div>;
-      case 'file': return <input type="text" value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} placeholder="File URL" />;
-      default: return <input type="text" value={value || ''} onChange={(e) => onChange(field.id, e.target.value)} className={cls} />;
-    }
-  };
-
-  const getChildrenByParentId = (parentId) => data.categories.filter(cat => cat.parentId === parentId);
-  const getRootCategories = () => data.categories.filter(cat => cat.parentId === null);
-  const getCategoryById = (id) => data.categories.find(cat => cat.id === id);
-  const getParentChain = (categoryId) => {
-    const chain = [];
-    let currentId = categoryId;
-    while (currentId) {
-      const category = getCategoryById(currentId);
-      if (!category) break;
-      chain.unshift(category);
-      currentId = category.parentId;
-    }
-    return chain;
   };
 
   const toggleCategoryExpand = (id) => {
     setExpandedCategories(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getAllCategoriesFlat = () => {
-    return data.categories.map(cat => ({
-      ...cat,
-      fullPath: getParentChain(cat.id).map(c => c.name).join(' > ')
-    }));
+  const toggleCategorySelect = (id) => {
+    const newSet = new Set(selectedCategories);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedCategories(newSet);
   };
 
-  const handleFieldDataChange = (fieldId, value, isEditing = false) => {
-    if (isEditing) {
-      setEditingCategory(prev => ({ ...prev, fieldData: { ...prev.fieldData, [fieldId]: value } }));
+  const selectAll = () => {
+    if (selectedCategories.size === data.categories.length) {
+      setSelectedCategories(new Set());
     } else {
-      setAddingCategory(prev => ({ ...prev, fieldData: { ...prev.fieldData, [fieldId]: value } }));
+      setSelectedCategories(new Set(data.categories.map(c => c.id)));
     }
+  };
+
+  const searchCategories = () => {
+    let results = data.categories;
+    if (categorySearch.trim()) {
+      const query = categorySearch.toLowerCase();
+      results = results.filter(cat => {
+        if (searchFilters.type === 'name') return cat.name.toLowerCase().includes(query);
+        if (searchFilters.type === 'id') return cat.categoryId.toLowerCase().includes(query);
+        if (searchFilters.type === 'tags') return cat.tags.some(tag => tag.toLowerCase().includes(query));
+        return true;
+      });
+    }
+    if (searchFilters.status !== 'all') {
+      results = results.filter(cat => cat.status === searchFilters.status);
+    }
+    return results.sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'date') return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortBy === 'priority') {
+        const pMap = { high: 0, medium: 1, low: 2 };
+        return pMap[a.priority] - pMap[b.priority];
+      }
+      return 0;
+    });
+  };
+
+  const handleJSONUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        let jsonData = JSON.parse(event.target.result);
+        if (!Array.isArray(jsonData)) jsonData = jsonData.categories || [];
+        const now = new Date().toISOString();
+        const newCategories = jsonData.map((cat, idx) => ({
+          id: 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
+          categoryId: cat.categoryId || `CAT${data.categories.length + idx + 1}`,
+          name: cat.name || `Category ${idx + 1}`,
+          description: cat.description || '',
+          parentId: cat.parentId || null,
+          fields: cat.fields || [],
+          tags: cat.tags || [],
+          priority: cat.priority || 'medium',
+          status: cat.status || 'active',
+          createdAt: now,
+          modifiedAt: now,
+          logs: [{ action: 'Imported', timestamp: now, details: 'JSON Import' }]
+        }));
+        let updated = [...data.categories, ...newCategories];
+        updated = regenerateCategoryIds(updated);
+        setData({ categories: updated });
+        setUploadMessage(`Success: ${newCategories.length} imported`);
+        setTimeout(() => setUploadMessage(''), 3000);
+      } catch (error) {
+        setUploadMessage(`Error: ${error.message}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCSVUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const lines = event.target.result.split('\n').filter(line => line.trim());
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const now = new Date().toISOString();
+        const newCategories = lines.slice(1).map((line, idx) => {
+          const values = line.split(',').map(v => v.trim());
+          const obj = {};
+          headers.forEach((header, i) => {
+            obj[header] = values[i] || '';
+          });
+          return {
+            id: 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
+            categoryId: obj.categoryid || `CAT${data.categories.length + idx + 1}`,
+            name: obj.name || `Category ${idx + 1}`,
+            description: obj.description || '',
+            parentId: obj.parentid || null,
+            fields: [],
+            tags: obj.tags ? obj.tags.split(';').map(t => t.trim()) : [],
+            priority: obj.priority || 'medium',
+            status: obj.status || 'active',
+            createdAt: now,
+            modifiedAt: now,
+            logs: [{ action: 'Imported', timestamp: now, details: 'CSV Import' }]
+          };
+        });
+        let updated = [...data.categories, ...newCategories];
+        updated = regenerateCategoryIds(updated);
+        setData({ categories: updated });
+        setUploadMessage(`Success: ${newCategories.length} imported`);
+        setTimeout(() => setUploadMessage(''), 3000);
+      } catch (error) {
+        setUploadMessage(`Error: ${error.message}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadTemplate = (type) => {
+    if (type === 'json') {
+      const template = { categories: [{ categoryId: 'CAT1', name: 'Sample', description: 'Test', parentId: null, tags: ['tag1'], priority: 'medium', status: 'active', fields: [] }] };
+      const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'template.json';
+      link.click();
+    } else {
+      const csv = 'categoryid,name,description,parentid,tags,priority,status\nCAT1,Sample,Test,,tag1,medium,active';
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'template.csv';
+      link.click();
+    }
+  };
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `categories-${Date.now()}.json`;
+    link.click();
+  };
+
+  const searchResults = searchCategories();
+  const filteredIds = categorySearch.trim() || searchFilters.status !== 'all' ? new Set(searchResults.map(c => c.id)) : null;
+
+  const stats = {
+    total: data.categories.length,
+    active: data.categories.filter(c => c.status === 'active').length,
+    highPriority: data.categories.filter(c => c.priority === 'high').length,
+    withFields: data.categories.filter(c => c.fields?.length > 0).length
   };
 
   const CategoryTreeView = ({ parentId = null, level = 0 }) => {
@@ -276,44 +489,48 @@ const HierarchicalStageManager = () => {
     if (categories.length === 0) return null;
 
     return (
-      <div className={level > 0 ? 'ml-6 border-l-2 border-gray-300 pl-4 mt-2' : ''}>
-        {categories.map(category => {
-          const children = getChildrenByParentId(category.id);
+      <div className={level > 0 ? `ml-8 border-l-2 ${isDarkMode ? 'border-slate-600' : 'border-slate-300'} pl-4 mt-2` : ''}>
+        {categories.map(cat => {
+          const children = getChildrenByParentId(cat.id);
           const hasChildren = children.length > 0;
+          const isMatched = !filteredIds || filteredIds.has(cat.id);
+          const hasMatchedChildren = hasChildren && filteredIds && children.some(child => filteredIds.has(child.id));
+          const shouldShow = !filteredIds || isMatched || hasMatchedChildren;
+
+          if (!shouldShow) return null;
 
           return (
-            <div key={category.id} className="mb-2">
-              <div className="bg-white p-3 rounded-lg border-2 border-gray-200 hover:border-blue-400">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-1">
-                    {hasChildren && (
-                      <button onClick={() => toggleCategoryExpand(category.id)} className="text-gray-600 hover:text-blue-600">
-                        {expandedCategories[category.id] ? <MdExpandMore size={18} /> : <MdChevronRight size={18} />}
-                      </button>
-                    )}
-                    {!hasChildren && <div className="w-[18px]"></div>}
-                    <MdFolder size={16} className="text-blue-600" />
-                    <div className="flex-1">
+            <div key={cat.id} className="mb-3">
+              <div className={`border rounded-lg p-3 transition ${isDarkMode ? 'border-slate-600 bg-slate-800 hover:border-slate-500' : 'border-slate-300 bg-white hover:border-slate-400'}`}>
+                <div className="flex items-center gap-3 justify-between flex-wrap">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <input type="checkbox" checked={selectedCategories.has(cat.id)} onChange={() => toggleCategorySelect(cat.id)} className="w-4 h-4" />
+                    {hasChildren && <button onClick={() => toggleCategoryExpand(cat.id)} className={isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-800'}>{expandedCategories[cat.id] || (isMatched && hasMatchedChildren) ? <MdExpandMore size={18} /> : <MdChevronRight size={18} />}</button>}
+                    {!hasChildren && <div className="w-5"></div>}
+                    <MdFolder size={18} className={isDarkMode ? 'text-blue-400' : 'text-blue-600'} />
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold">{category.name}</span>
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{category.categoryId}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${category.priority === 'high' ? 'bg-red-100 text-red-700' : category.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{category.priority}</span>
+                        <span className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{cat.name}</span>
+                        <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>{cat.categoryId}</span>
+                        <span className={`text-xs px-2 py-1 rounded ${cat.status === 'active' ? (isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700') : (isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-700')}`}>{cat.status}</span>
                       </div>
-                      {category.description && <div className="text-xs text-gray-500 mt-1">{category.description}</div>}
+                      {cat.description && <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{cat.description}</p>}
                     </div>
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <button onClick={() => moveCategoryLevel(category.id, 'left')} className="text-orange-600 px-2 py-1 bg-orange-50 rounded text-sm" disabled={!category.parentId}><MdArrowBack size={14} /></button>
-                      <button onClick={() => moveCategoryLevel(category.id, 'right')} className="text-orange-600 px-2 py-1 bg-orange-50 rounded text-sm"><MdArrowForward size={14} /></button>
-                      <button onClick={() => setShowFieldEditor(category.id)} className="text-purple-600 px-2 py-1 bg-purple-50 rounded text-sm"><MdDescription size={14} /></button>
-                      <button onClick={() => setEditingCategory({...category})} className="text-blue-600 px-2 py-1 bg-blue-50 rounded text-sm"><MdEdit size={14} /></button>
-                      <button onClick={() => duplicateCategory(category.id)} className="text-teal-600 px-2 py-1 bg-teal-50 rounded text-sm"><MdContentCopy size={14} /></button>
-                      <button onClick={() => setAddingCategory({name: '', parentId: category.id, description: '', fields: [], fieldData: {}, tags: [], priority: 'medium', status: 'active'})} className="text-green-600 px-2 py-1 bg-green-50 rounded text-sm"><MdAdd size={14} /></button>
-                      <button onClick={() => deleteCategory(category.id)} className="text-red-600 px-2 py-1 bg-red-50 rounded text-sm"><MdDelete size={14} /></button>
-                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => moveCategoryOrder(cat.id, 'up')} className={`p-1.5 rounded flex items-center gap-1 ${isDarkMode ? 'text-blue-400 hover:bg-blue-900' : 'text-blue-600 hover:bg-blue-100'}`} title="Move Up"><MdArrowBack size={14} style={{transform: 'rotate(90deg)'}} /></button>
+                    <button onClick={() => moveCategoryOrder(cat.id, 'down')} className={`p-1.5 rounded flex items-center gap-1 ${isDarkMode ? 'text-blue-400 hover:bg-blue-900' : 'text-blue-600 hover:bg-blue-100'}`} title="Move Down"><MdArrowForward size={14} style={{transform: 'rotate(90deg)'}} /></button>
+                    <button onClick={() => moveCategoryLevel(cat.id, 'left')} disabled={!cat.parentId} className={`p-1.5 rounded disabled:opacity-50 ${isDarkMode ? 'text-orange-400 hover:bg-orange-900' : 'text-orange-600 hover:bg-orange-100'}`} title="Outdent"><MdArrowBack size={14} /></button>
+                    <button onClick={() => moveCategoryLevel(cat.id, 'right')} className={`p-1.5 rounded ${isDarkMode ? 'text-orange-400 hover:bg-orange-900' : 'text-orange-600 hover:bg-orange-100'}`} title="Indent"><MdArrowForward size={14} /></button>
+                    <button onClick={() => setShowFieldEditor(cat.id)} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdDescription size={14} /></button>
+                    <button onClick={() => setEditingCategory({...cat})} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdEdit size={14} /></button>
+                    <button onClick={() => duplicateCategoryWithHierarchy(cat.id)} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdContentCopy size={14} /></button>
+                    <button onClick={() => setAddingCategory({...addingCategory, parentId: cat.id})} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdAdd size={14} /></button>
+                    <button onClick={() => deleteCategory(cat.id)} className={`p-1.5 rounded ${isDarkMode ? 'text-red-400 hover:bg-red-900' : 'text-red-600 hover:bg-red-100'}`}><MdDelete size={14} /></button>
                   </div>
                 </div>
               </div>
-              {hasChildren && expandedCategories[category.id] && <CategoryTreeView parentId={category.id} level={level + 1} />}
+              {hasChildren && (expandedCategories[cat.id] || (isMatched && hasMatchedChildren)) && <CategoryTreeView parentId={cat.id} level={level + 1} />}
             </div>
           );
         })}
@@ -321,174 +538,267 @@ const HierarchicalStageManager = () => {
     );
   };
 
-  const addStage = () => {
-    if (!newStage.title) {
-      alert('Enter stage title');
-      return;
-    }
-    const stage = { id: 'stage_' + Date.now().toString(36), ...newStage, createdAt: new Date().toISOString() };
-    setData(prev => ({ ...prev, stages: [...prev.stages, stage] }));
-    setNewStage({ title: '', jobPosting: '', guidelinesFile: '', worksheetFile: '', taskChecklistFile: '', worksheetFormat: '', supportiveDoc: '', selectedCategories: [] });
-    setShowStageForm(false);
-  };
-
-  const toggleStageExpand = (id) => {
-    setExpandedStages(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const exportData = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'stage-data-' + Date.now() + '.json';
-    link.click();
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className={`min-h-screen p-6 transition-colors ${isDarkMode ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100'}`}>
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">Advanced Category & Stage Manager</h1>
-            <div className="flex gap-3 flex-wrap">
-              <button onClick={() => setShowCategoryLogs(!showCategoryLogs)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"><MdDescription size={18} /> Logs</button>
-              <button onClick={() => setShowCategoryManager(!showCategoryManager)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"><MdEdit size={18} /> Categories</button>
-              <button onClick={() => setShowStageForm(!showStageForm)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"><MdAdd size={20} /> Stage</button>
-              <button onClick={exportData} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Export</button>
-            </div>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className={`text-4xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Category Manager</h1>
+            <p className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Manage hierarchical categories efficiently</p>
           </div>
-
-          {showCategoryLogs && (
-            <div className="mb-6 p-6 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-lg border-2 border-indigo-200">
-              <h2 className="text-xl font-semibold mb-4 text-indigo-800 flex items-center gap-2"><MdDescription size={24} /> Category Activity Logs</h2>
-              <div className="max-h-96 overflow-y-auto space-y-2">
-                {data.categories.flatMap(cat => (cat.logs || []).map((log, idx) => (
-                  <div key={`${cat.id}-${idx}`} className="bg-white p-4 rounded-lg border-l-4 border-indigo-500">
-                    <div className="flex justify-between"><div><div className="flex gap-2 mb-2"><span className="font-semibold">{cat.name}</span><span className="text-xs bg-indigo-100 text-indigo-700 px-2 rounded">{cat.categoryId}</span><span className={`text-xs px-2 py-1 rounded ${log.action === 'Created' ? 'bg-green-100 text-green-700' : log.action === 'Modified' ? 'bg-blue-100 text-blue-700' : log.action === 'Duplicated' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>{log.action}</span></div><p className="text-sm text-gray-600">{log.details}</p></div><span className="text-xs text-gray-500">{new Date(log.timestamp).toLocaleString()}</span></div>
-                  </div>
-                ))).reverse()}
-                {data.categories.length === 0 && <p className="text-center text-gray-500 py-8">No logs yet</p>}
-              </div>
-            </div>
-          )}
-
-          {showCategoryManager && (
-            <div className="mb-6 p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border-2 border-purple-200">
-              <h2 className="text-xl font-semibold mb-4 text-purple-800"><MdLabel size={24} /> Advanced Category Management</h2>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="bg-white p-5 rounded-lg border-2 border-purple-300">
-                  <h3 className="font-semibold mb-4 text-lg flex gap-2">{editingCategory ? <MdEdit className="text-blue-600" /> : <MdAdd className="text-purple-600" />} {editingCategory ? 'Edit' : 'Add New'} Category</h3>
-                  <div className="space-y-4 max-h-[800px] overflow-y-auto">
-                    <div><label className="block text-sm font-medium mb-2">Parent</label><select value={editingCategory ? editingCategory.parentId || '' : addingCategory.parentId || ''} onChange={(e) => { const id = e.target.value || null; if (editingCategory) setEditingCategory({...editingCategory, parentId: id}); else setAddingCategory({...addingCategory, parentId: id}); }} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"><option value="">Root</option>{getAllCategoriesFlat().filter(c => !editingCategory || c.id !== editingCategory.id).map(c => <option key={c.id} value={c.id}>{c.categoryId} - {c.fullPath}</option>)}</select></div>
-                    <div><label className="block text-sm font-medium mb-2">Name *</label><input type="text" value={editingCategory ? editingCategory.name : addingCategory.name} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, name: e.target.value}) : setAddingCategory({...addingCategory, name: e.target.value})} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm" /></div>
-                    <div><label className="block text-sm font-medium mb-2">Description</label><textarea value={editingCategory ? editingCategory.description : addingCategory.description} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, description: e.target.value}) : setAddingCategory({...addingCategory, description: e.target.value})} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm" rows="2" /></div>
-                    <div><label className="block text-sm font-medium mb-2">Priority</label><select value={editingCategory ? editingCategory.priority : addingCategory.priority} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, priority: e.target.value}) : setAddingCategory({...addingCategory, priority: e.target.value})} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"><option>Low</option><option>Medium</option><option>High</option></select></div>
-                    <div><label className="block text-sm font-medium mb-2">Status</label><select value={editingCategory ? editingCategory.status : addingCategory.status} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, status: e.target.value}) : setAddingCategory({...addingCategory, status: e.target.value})} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></div>
-                    <div><label className="block text-sm font-medium mb-2">Tags</label><input type="text" value={editingCategory ? editingCategory.tags.join(', ') : addingCategory.tags.join(', ')} onChange={(e) => { const tags = e.target.value.split(',').map(t => t.trim()).filter(t => t); editingCategory ? setEditingCategory({...editingCategory, tags}) : setAddingCategory({...addingCategory, tags}); }} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm" placeholder="tag1, tag2" /></div>
-                    <div className="flex gap-2 pt-4 border-t">{editingCategory ? <><button onClick={updateCategory} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2 text-sm"><MdSave /> Update</button><button onClick={() => setEditingCategory(null)} className="px-3 py-2 bg-gray-400 text-white rounded-lg"><MdClose /></button></> : <><button onClick={addCategory} className="flex-1 px-3 py-2 bg-purple-600 text-white rounded-lg flex items-center justify-center gap-2 text-sm"><MdAdd /> Add</button><button onClick={() => setAddingCategory({ name: '', parentId: null, description: '', fields: [], fieldData: {}, tags: [], priority: 'medium', status: 'active' })} className="px-3 py-2 bg-gray-400 text-white rounded-lg"><MdClose /></button></>}</div>
-                  </div>
-                </div>
-
-                <div className="lg:col-span-2 space-y-4">
-                  <div className="bg-white p-4 rounded-lg border-2 border-purple-300"><label className="block text-sm font-medium mb-2">Search</label><div className="relative"><MdSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" /><input type="text" value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} placeholder="Search..." className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg text-sm" /></div></div>
-                  <div className="bg-white p-4 rounded-lg border-2 border-purple-300"><h3 className="font-semibold mb-3 text-lg flex gap-2"><MdFolder className="text-purple-600" /> Hierarchy</h3><div className="max-h-[700px] overflow-y-auto">{data.categories.length === 0 ? <div className="text-center py-12 text-gray-500"><MdFolder size={40} className="mx-auto mb-3 text-gray-300" /><p className="text-sm">No categories</p></div> : <CategoryTreeView />}</div></div>
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-3">
-                <div className="bg-white p-4 rounded-lg border-2 border-purple-200 text-center"><div className="text-2xl font-bold text-purple-600">{data.categories.length}</div><div className="text-xs text-gray-600 mt-1">Total</div></div>
-                <div className="bg-white p-4 rounded-lg border-2 border-purple-200 text-center"><div className="text-2xl font-bold text-blue-600">{getRootCategories().length}</div><div className="text-xs text-gray-600 mt-1">Root</div></div>
-                <div className="bg-white p-4 rounded-lg border-2 border-purple-200 text-center"><div className="text-2xl font-bold text-green-600">{data.categories.filter(c => c.parentId !== null).length}</div><div className="text-xs text-gray-600 mt-1">Children</div></div>
-                <div className="bg-white p-4 rounded-lg border-2 border-purple-200 text-center"><div className="text-2xl font-bold text-orange-600">{data.categories.filter(c => c.fields.length > 0).length}</div><div className="text-xs text-gray-600 mt-1">With Fields</div></div>
-                <div className="bg-white p-4 rounded-lg border-2 border-purple-200 text-center"><div className="text-2xl font-bold text-red-600">{data.stages.length}</div><div className="text-xs text-gray-600 mt-1">Stages</div></div>
-              </div>
-            </div>
-          )}
-
-          {showFieldEditor && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="p-6 border-b sticky top-0 bg-white flex justify-between items-center">
-                  <h3 className="text-xl font-bold flex gap-2"><MdDescription className="text-purple-600" /> Manage Fields</h3>
-                  <button onClick={() => {setShowFieldEditor(null); setNewField({name: '', type: 'text', required: false, options: []});}} className="text-gray-500"><MdClose size={24} /></button>
-                </div>
-                <div className="p-6">
-                  <div className="bg-purple-50 p-4 rounded-lg border mb-6">
-                    <h4 className="font-semibold mb-3">Add New Field</h4>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div><label className="text-sm font-medium">Name *</label><input type="text" value={newField.name} onChange={(e) => setNewField({...newField, name: e.target.value})} className="w-full px-3 py-2 border rounded text-sm" /></div>
-                        <div><label className="text-sm font-medium">Type *</label><select value={newField.type} onChange={(e) => setNewField({...newField, type: e.target.value})} className="w-full px-3 py-2 border rounded text-sm">{fieldTypes.map(t => <option key={t.value}>{t.label}</option>)}</select></div>
-                      </div>
-                      {(newField.type === 'dropdown' || newField.type === 'radio') && <div><label className="text-sm font-medium">Options</label><input type="text" value={newField.options.join(', ')} onChange={(e) => setNewField({...newField, options: e.target.value.split(',').map(o => o.trim())})} className="w-full px-3 py-2 border rounded text-sm" /></div>}
-                      <label className="flex gap-2"><input type="checkbox" checked={newField.required} onChange={(e) => setNewField({...newField, required: e.target.checked})} /> Required</label>
-                      <button onClick={() => addFieldToCategory(showFieldEditor)} className="w-full px-4 py-2 bg-purple-600 text-white rounded flex items-center justify-center gap-2 text-sm"><MdAdd /> Add</button>
-                    </div>
-                  </div>
-                  <div><h4 className="font-semibold mb-3">Existing</h4><div className="space-y-2">{(getCategoryById(showFieldEditor)?.fields || []).map(f => <div key={f.id} className="bg-white p-3 rounded border-2 flex justify-between"><div><span className="font-medium text-sm">{f.name}</span> <span className="text-xs bg-blue-100 text-blue-700 px-2 rounded ml-2">{fieldTypes.find(t => t.value === f.type)?.label}</span></div><button onClick={() => removeFieldFromCategory(showFieldEditor, f.id)} className="text-red-600"><MdDelete size={16} /></button></div>)}</div></div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {viewFieldData && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="p-6 border-b flex justify-between"><h3 className="text-xl font-bold"><MdVisibility /> Field Data</h3><button onClick={() => setViewFieldData(null)}><MdClose size={24} /></button></div>
-                <div className="p-6 space-y-4">{getCategoryById(viewFieldData)?.fields.map(f => <div key={f.id} className="bg-gray-50 p-4 rounded"><div className="flex gap-2 mb-2"><span className="font-semibold text-sm">{f.name}</span><span className="text-xs bg-blue-100 text-blue-700 px-2 rounded">{fieldTypes.find(t => t.value === f.type)?.label}</span></div><div className="text-sm">{f.type === 'checkbox' ? (getCategoryById(viewFieldData)?.fieldData?.[f.id] ? 'Yes' : 'No') : getCategoryById(viewFieldData)?.fieldData?.[f.id] || 'No data'}</div></div>)}</div>
-              </div>
-            </div>
-          )}
-
-          {showStageForm && (
-            <div className="mb-6 p-6 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-200">
-              <h2 className="text-xl font-semibold mb-4">Add New Stage</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2"><label className="text-sm font-medium">Title *</label><input type="text" value={newStage.title} onChange={(e) => setNewStage({...newStage, title: e.target.value})} className="w-full px-4 py-2 border rounded text-sm" /></div>
-                <div><label className="text-sm font-medium">Job Posting</label><input type="text" value={newStage.jobPosting} onChange={(e) => setNewStage({...newStage, jobPosting: e.target.value})} className="w-full px-4 py-2 border rounded text-sm" /></div>
-                <div><label className="text-sm font-medium">Worksheet Format</label><input type="text" value={newStage.worksheetFormat} onChange={(e) => setNewStage({...newStage, worksheetFormat: e.target.value})} className="w-full px-4 py-2 border rounded text-sm" /></div>
-                <div><label className="text-sm font-medium">Guidelines URL</label><input type="text" value={newStage.guidelinesFile} onChange={(e) => setNewStage({...newStage, guidelinesFile: e.target.value})} className="w-full px-4 py-2 border rounded text-sm" placeholder="https://..." /></div>
-                <div><label className="text-sm font-medium">Worksheet URL</label><input type="text" value={newStage.worksheetFile} onChange={(e) => setNewStage({...newStage, worksheetFile: e.target.value})} className="w-full px-4 py-2 border rounded text-sm" placeholder="https://..." /></div>
-                <div><label className="text-sm font-medium">Checklist URL</label><input type="text" value={newStage.taskChecklistFile} onChange={(e) => setNewStage({...newStage, taskChecklistFile: e.target.value})} className="w-full px-4 py-2 border rounded text-sm" placeholder="https://..." /></div>
-                <div><label className="text-sm font-medium">Doc URL</label><input type="text" value={newStage.supportiveDoc} onChange={(e) => setNewStage({...newStage, supportiveDoc: e.target.value})} className="w-full px-4 py-2 border rounded text-sm" placeholder="https://..." /></div>
-              </div>
-              <div className="flex gap-3 mt-6"><button onClick={addStage} className="px-6 py-2 bg-blue-600 text-white rounded flex items-center gap-2 text-sm"><MdSave /> Save</button><button onClick={() => setShowStageForm(false)} className="px-6 py-2 bg-gray-400 text-white rounded text-sm">Cancel</button></div>
-            </div>
-          )}
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className={`px-4 py-2 rounded-lg font-medium transition ${isDarkMode ? 'bg-yellow-600 text-white hover:bg-yellow-700' : 'bg-slate-800 text-white hover:bg-slate-900'}`}>
+            {isDarkMode ? '☀️ Light' : '🌙 Dark'}
+          </button>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold mb-4">Stages ({data.stages.length})</h2>
-          {data.stages.length === 0 ? (
-            <p className="text-center text-gray-500 py-12">No stages yet</p>
-          ) : (
-            <div className="space-y-4">
-              {data.stages.map(stage => (
-                <div key={stage.id} className="border rounded-lg">
-                  <div className="bg-gradient-to-r from-blue-100 to-purple-100 p-4 cursor-pointer hover:from-blue-200 hover:to-purple-200" onClick={() => toggleStageExpand(stage.id)}>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-3">{expandedStages[stage.id] ? <MdExpandMore /> : <MdChevronRight />}<h3 className="font-bold">{stage.title}</h3></div>
-                      <span className="text-sm text-gray-600">{new Date(stage.createdAt).toLocaleDateString()}</span>
-                    </div>
+        <div className="flex gap-3 mb-8 flex-wrap">
+          <button onClick={() => setActiveWindow(activeWindow === 'logs' ? null : 'logs')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${activeWindow === 'logs' ? 'bg-indigo-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}><MdDescription size={16} /> Logs</button>
+          <button onClick={() => setActiveWindow(activeWindow === 'bulk' ? null : 'bulk')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${activeWindow === 'bulk' ? 'bg-orange-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}><MdFileUpload size={16} /> Bulk</button>
+          <button onClick={() => setShowStats(!showStats)} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${showStats ? 'bg-cyan-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}><MdShowChart size={16} /> Stats</button>
+          <button onClick={exportData} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${isDarkMode ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}><MdDownload size={16} /> Export</button>
+        </div>
+
+        {showStats && (
+          <div className={`mb-8 p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-4 rounded-lg text-white">
+                <div className="text-2xl font-bold">{stats.total}</div>
+                <p className="text-xs mt-1">Total</p>
+              </div>
+              <div className="bg-gradient-to-br from-green-600 to-green-700 p-4 rounded-lg text-white">
+                <div className="text-2xl font-bold">{stats.active}</div>
+                <p className="text-xs mt-1">Active</p>
+              </div>
+              <div className="bg-gradient-to-br from-red-600 to-red-700 p-4 rounded-lg text-white">
+                <div className="text-2xl font-bold">{stats.highPriority}</div>
+                <p className="text-xs mt-1">High Priority</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-600 to-purple-700 p-4 rounded-lg text-white">
+                <div className="text-2xl font-bold">{stats.withFields}</div>
+                <p className="text-xs mt-1">With Fields</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeWindow === 'logs' && (
+          <div className={`mb-8 p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Activity Logs</h2>
+              <button onClick={() => setActiveWindow(null)} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-gray-900'}`}><MdClose size={20} /></button>
+            </div>
+            <div className="max-h-96 overflow-y-auto space-y-2">
+              {data.categories.flatMap(cat => (cat.logs || []).map((log, idx) => (
+                <div key={`${cat.id}-${idx}`} className={`p-3 rounded border-l-4 border-indigo-500 text-sm ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                  <div className="flex justify-between gap-2">
+                    <div><span className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{cat.name}</span> <span className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{log.action}</span></div>
+                    <span className={`text-xs ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(log.timestamp).toLocaleString()}</span>
                   </div>
-                  {expandedStages[stage.id] && (
-                    <div className="p-6 bg-white grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {stage.jobPosting && <div className="p-3 bg-gray-50 rounded"><span className="font-semibold block mb-1">Job Posting:</span><p className="text-sm">{stage.jobPosting}</p></div>}
-                      {stage.worksheetFormat && <div className="p-3 bg-gray-50 rounded"><span className="font-semibold block mb-1">Format:</span><p className="text-sm">{stage.worksheetFormat}</p></div>}
-                      {stage.guidelinesFile && <div className="p-3 bg-gray-50 rounded"><span className="font-semibold block mb-1">Guidelines:</span><a href={stage.guidelinesFile} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">{stage.guidelinesFile}</a></div>}
-                      {stage.worksheetFile && <div className="p-3 bg-gray-50 rounded"><span className="font-semibold block mb-1">Worksheet:</span><a href={stage.worksheetFile} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">{stage.worksheetFile}</a></div>}
-                      {stage.taskChecklistFile && <div className="p-3 bg-gray-50 rounded"><span className="font-semibold block mb-1">Checklist:</span><a href={stage.taskChecklistFile} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">{stage.taskChecklistFile}</a></div>}
-                      {stage.supportiveDoc && <div className="p-3 bg-gray-50 rounded"><span className="font-semibold block mb-1">Doc:</span><a href={stage.supportiveDoc} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">{stage.supportiveDoc}</a></div>}
+                </div>
+              ))).reverse().slice(0, 30)}
+            </div>
+          </div>
+        )}
+
+        {activeWindow === 'bulk' && (
+          <div className={`mb-8 p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Bulk Operations</h2>
+              <button onClick={() => setActiveWindow(null)} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-gray-900'}`}><MdClose size={20} /></button>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className={`p-6 rounded-lg border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
+                <h3 className={`font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><MdFileUpload size={18} /> Upload</h3>
+                <div className="space-y-4">
+                  <label className={`flex items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer transition ${isDarkMode ? 'border-slate-500 hover:bg-slate-600 bg-slate-800' : 'border-slate-400 hover:bg-slate-100 bg-white'}`}>
+                    <div className="text-center">
+                      <MdFileUpload className={`mx-auto mb-2 ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`} size={24} />
+                      <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>JSON File</p>
+                      <input type="file" accept=".json" onChange={handleJSONUpload} className="hidden" />
+                    </div>
+                  </label>
+                  <label className={`flex items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer transition ${isDarkMode ? 'border-slate-500 hover:bg-slate-600 bg-slate-800' : 'border-slate-400 hover:bg-slate-100 bg-white'}`}>
+                    <div className="text-center">
+                      <MdFileUpload className={`mx-auto mb-2 ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`} size={24} />
+                      <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>CSV File</p>
+                      <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
+                    </div>
+                  </label>
+                  <div className="flex gap-2">
+                    <button onClick={() => downloadTemplate('json')} className="flex-1 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-sm font-medium">JSON Template</button>
+                    <button onClick={() => downloadTemplate('csv')} className="flex-1 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-sm font-medium">CSV Template</button>
+                  </div>
+                  {uploadMessage && (
+                    <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${uploadMessage.includes('Success') ? (isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-800') : (isDarkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-800')}`}>
+                      {uploadMessage.includes('Success') ? <MdCheckCircle size={16} /> : <MdWarning size={16} />}
+                      {uploadMessage}
                     </div>
                   )}
                 </div>
-              ))}
+              </div>
+              <div className={`p-6 rounded-lg border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
+                <h3 className={`font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Bulk Edit ({selectedCategories.size})</h3>
+                <div className="space-y-4">
+                  <button onClick={selectAll} className={`text-xs flex items-center gap-1 ${isDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-cyan-600 hover:text-cyan-700'}`}><MdSelectAll size={14} /> {selectedCategories.size === data.categories.length ? 'Deselect All' : 'Select All'}</button>
+                  <div>
+                    <label className={`text-sm block mb-2 font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Status</label>
+                    <select value={bulkStatusInput} onChange={(e) => setBulkStatusInput(e.target.value)} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </div>
+                  <button onClick={bulkEditStatus} disabled={selectedCategories.size === 0} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">Update Status</button>
+                  <div>
+                    <label className={`text-sm block mb-2 font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Add Tags</label>
+                    <input type="text" placeholder="tag1, tag2" value={bulkTagsInput} onChange={(e) => setBulkTagsInput(e.target.value)} className={`w-full px-3 py-2 rounded text-sm mb-2 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`} />
+                    <button onClick={bulkAddTags} disabled={selectedCategories.size === 0} className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium">Add Tags</button>
+                  </div>
+                  <button onClick={bulkDelete} disabled={selectedCategories.size === 0} className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 text-sm font-medium">Delete Selected</button>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className={`border rounded-xl p-6 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+            <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{editingCategory ? <MdEdit size={18} /> : <MdAdd size={18} />} {editingCategory ? 'Edit' : 'Add'}</h3>
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              <div>
+                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Parent</label>
+                <select value={editingCategory ? editingCategory.parentId || '' : addingCategory.parentId || ''} onChange={(e) => { const id = e.target.value || null; if (editingCategory) setEditingCategory({...editingCategory, parentId: id}); else setAddingCategory({...addingCategory, parentId: id}); }} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`}>
+                  <option value="">Root Level</option>
+                  {getAllCategoriesFlat().filter(c => !editingCategory || c.id !== editingCategory.id).map(c => <option key={c.id} value={c.id}>{c.categoryId} - {c.fullPath}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Name</label>
+                <input type="text" value={editingCategory ? editingCategory.name : addingCategory.name} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, name: e.target.value}) : setAddingCategory({...addingCategory, name: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} />
+              </div>
+              <div>
+                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Description</label>
+                <textarea value={editingCategory ? editingCategory.description : addingCategory.description} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, description: e.target.value}) : setAddingCategory({...addingCategory, description: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} rows="2" />
+              </div>
+              <div>
+                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Priority</label>
+                <select value={editingCategory ? editingCategory.priority : addingCategory.priority} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, priority: e.target.value}) : setAddingCategory({...addingCategory, priority: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div>
+                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Status</label>
+                <select value={editingCategory ? editingCategory.status : addingCategory.status} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, status: e.target.value}) : setAddingCategory({...addingCategory, status: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+              <div>
+                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Tags</label>
+                <input type="text" value={editingCategory ? editingCategory.tags.join(', ') : addingCategory.tags.join(', ')} onChange={(e) => { const tags = e.target.value.split(',').map(t => t.trim()).filter(t => t); editingCategory ? setEditingCategory({...editingCategory, tags}) : setAddingCategory({...addingCategory, tags}); }} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} placeholder="tag1, tag2" />
+              </div>
+              <div className={`flex gap-2 pt-4 border-t ${isDarkMode ? 'border-slate-600' : 'border-slate-300'}`}>
+                {editingCategory ? (
+                  <>
+                    <button onClick={updateCategory} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm flex items-center justify-center gap-2"><MdSave size={14} /> Update</button>
+                    <button onClick={() => setEditingCategory(null)} className={`px-4 py-2 rounded-lg ${isDarkMode ? 'bg-slate-600 text-white hover:bg-slate-500' : 'bg-slate-300 text-gray-900 hover:bg-slate-400'}`}><MdClose size={14} /></button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={addCategory} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm flex items-center justify-center gap-2"><MdAdd size={14} /> Add</button>
+                    <button onClick={() => setAddingCategory({ name: '', parentId: null, description: '', fields: [], tags: [], priority: 'medium', status: 'active' })} className={`px-4 py-2 rounded-lg ${isDarkMode ? 'bg-slate-600 text-white hover:bg-slate-500' : 'bg-slate-300 text-gray-900 hover:bg-slate-400'}`}><MdClose size={14} /></button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 space-y-6">
+            <div className={`border rounded-xl p-6 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+              <h3 className={`font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><MdSearch size={18} /> Search</h3>
+              <div className="space-y-3">
+                <input type="text" value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} placeholder="Search..." className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} />
+                <div className="flex gap-2">
+                  <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex-1 px-3 py-2 rounded text-sm font-medium ${isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}>Filters</button>
+                  <button onClick={() => { setCategorySearch(''); setSearchFilters({ type: 'name', status: 'all' }); }} className={`flex-1 px-3 py-2 rounded text-sm font-medium ${isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}>Reset</button>
+                </div>
+                {showAdvancedFilters && (
+                  <div className={`space-y-3 p-3 rounded border text-sm ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
+                    <select value={searchFilters.type} onChange={(e) => setSearchFilters({...searchFilters, type: e.target.value})} className={`w-full px-2 py-1 rounded text-xs ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
+                      <option value="name">Name</option>
+                      <option value="id">ID</option>
+                      <option value="tags">Tags</option>
+                    </select>
+                    <select value={searchFilters.status} onChange={(e) => setSearchFilters({...searchFilters, status: e.target.value})} className={`w-full px-2 py-1 rounded text-xs ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
+                      <option value="all">All Status</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className={`w-full px-2 py-1 rounded text-xs ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
+                      <option value="name">Sort: Name</option>
+                      <option value="date">Sort: Date</option>
+                      <option value="priority">Sort: Priority</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className={`border rounded-xl p-6 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+              <h3 className={`font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><MdFolder size={18} /> Categories {filteredIds && `(${searchResults.length})`}</h3>
+              <div className="max-h-96 overflow-y-auto">
+                {data.categories.length === 0 ? (
+                  <div className={`text-center py-8 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}><MdFolder size={32} className="mx-auto mb-2 opacity-50" /><p>No categories</p></div>
+                ) : (
+                  <CategoryTreeView />
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {showFieldEditor && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className={`border rounded-xl shadow-2xl max-w-2xl w-full max-h-96 overflow-y-auto ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+            <div className={`p-6 border-b sticky top-0 flex justify-between items-center ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+              <h3 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Fields</h3>
+              <button onClick={() => setShowFieldEditor(null)} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-gray-900'}`}><MdClose size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className={`p-4 rounded border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
+                <h4 className={`font-bold mb-3 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Add Field</h4>
+                <div className="space-y-2 text-sm">
+                  <input type="text" value={newField.name} onChange={(e) => setNewField({...newField, name: e.target.value})} placeholder="Field name" className={`w-full px-2 py-1 rounded ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`} />
+                  <select value={newField.type} onChange={(e) => setNewField({...newField, type: e.target.value})} className={`w-full px-2 py-1 rounded ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
+                    {fieldTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  {(newField.type === 'dropdown' || newField.type === 'radio') && <input type="text" value={newField.options.join(', ')} onChange={(e) => setNewField({...newField, options: e.target.value.split(',')})} placeholder="Options" className={`w-full px-2 py-1 rounded ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`} />}
+                  <label className={`flex gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><input type="checkbox" checked={newField.required} onChange={(e) => setNewField({...newField, required: e.target.checked})} /> Required</label>
+                  <button onClick={addFieldToCategory} className="w-full px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">Add</button>
+                </div>
+              </div>
+              <div>
+                <h4 className={`font-bold mb-2 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Existing</h4>
+                <div className="space-y-1">
+                  {(editingCategory?.fields || addingCategory.fields || []).map(f => (
+                    <div key={f.id} className={`p-2 rounded flex justify-between items-center text-sm ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-gray-900'}`}>
+                      <span>{f.name} <span className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>({fieldTypes.find(t => t.value === f.type)?.label})</span></span>
+                      <button onClick={() => removeField(f.id)} className={`${isDarkMode ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}><MdDelete size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default HierarchicalStageManager;
+export default CategoryManager;
