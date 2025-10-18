@@ -1,804 +1,459 @@
-import React, { useState } from 'react';
-import { MdAdd, MdExpandMore, MdChevronRight, MdEdit, MdSave, MdClose, MdDelete, MdContentCopy, MdSearch, MdDescription, MdLabel, MdArrowBack, MdArrowForward, MdFolder, MdFileUpload, MdFilterList, MdDownload, MdCheckCircle, MdWarning, MdSelectAll, MdRestartAlt, MdShowChart } from 'react-icons/md';
+import React, { useState, useEffect } from 'react';
+import { MdMenu, MdClose, MdDashboard, MdShoppingCart, MdPeople, MdTaskAlt, MdAssignment, MdExpandMore, MdChevronRight, MdSearch, MdNotifications, MdSettings, MdLogout, MdMenuOpen, MdFavoriteBorder, MdFavorite, MdAnalytics, MdHistory, MdHelp } from 'react-icons/md';
+import CategoryManager from './CategoryManager';
+import RecruitmentApp from './RecruitmentApp';
+import { UserManagement, TaskManagement } from './UserTaskManagement';
 
-const CategoryManager = () => {
-  const [data, setData] = useState({ categories: [] });
-  const [addingCategory, setAddingCategory] = useState({ name: '', parentId: null, description: '', fields: [], tags: [], priority: 'medium', status: 'active' });
-  const [editingCategory, setEditingCategory] = useState(null);
-  const [expandedCategories, setExpandedCategories] = useState({});
-  const [categorySearch, setCategorySearch] = useState('');
-  const [searchFilters, setSearchFilters] = useState({ type: 'name', status: 'all' });
-  const [showFieldEditor, setShowFieldEditor] = useState(null);
-  const [newField, setNewField] = useState({ name: '', type: 'text', required: false, options: [] });
-  const [selectedCategories, setSelectedCategories] = useState(new Set());
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [sortBy, setSortBy] = useState('name');
-  const [showStats, setShowStats] = useState(false);
-  const [activeWindow, setActiveWindow] = useState(null);
-  const [bulkTagsInput, setBulkTagsInput] = useState('');
-  const [bulkStatusInput, setBulkStatusInput] = useState('active');
-  const [uploadMessage, setUploadMessage] = useState('');
-  const [isDarkMode, setIsDarkMode] = useState(true);
+// Advanced Sidebar Component
+const AdminSidebar = ({ isOpen, onToggle, currentPage, onNavigate, sidebarCompressed, setSidebarCompressed }) => {
+  const [expandedMenus, setExpandedMenus] = useState({});
+  const [favorites, setFavorites] = useState(new Set(['dashboard', 'categories']));
+  const [searchQuery, setSearchQuery] = useState('');
+  const [recentPages, setRecentPages] = useState([]);
 
-  const fieldTypes = [
-    { value: 'text', label: 'Text Input' },
-    { value: 'textarea', label: 'Text Area' },
-    { value: 'number', label: 'Number' },
-    { value: 'email', label: 'Email' },
-    { value: 'phone', label: 'Phone' },
-    { value: 'url', label: 'URL' },
-    { value: 'date', label: 'Date' },
-    { value: 'dropdown', label: 'Dropdown' },
-    { value: 'checkbox', label: 'Checkbox' },
-    { value: 'radio', label: 'Radio' },
-    { value: 'file', label: 'File' }
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: MdDashboard, submenu: [] },
+    { 
+      id: 'management', 
+      label: 'Management', 
+      icon: MdAnalytics, 
+      submenu: [
+        { id: 'categories', label: 'Product Service Categories', icon: MdShoppingCart },
+        { id: 'users', label: 'User Management', icon: MdPeople },
+        { id: 'tasks', label: 'Task Management', icon: MdTaskAlt },
+      ]
+    },
+    { 
+      id: 'expansion', 
+      label: 'Dependency', 
+      icon: MdAssignment, 
+      submenu: [
+        { id: 'user-expandancy', label: 'User Dependency Management', icon: MdPeople },
+        { id: 'task-expandancy', label: 'Task Dependency Management', icon: MdTaskAlt },
+      ]
+    },
   ];
 
-  const getCategoryById = (id) => data.categories.find(cat => cat.id === id);
-  const getChildrenByParentId = (parentId) => data.categories.filter(cat => cat.parentId === parentId);
-  const getParentChain = (categoryId) => {
-    const chain = [];
-    let currentId = categoryId;
-    while (currentId) {
-      const category = getCategoryById(currentId);
-      if (!category) break;
-      chain.unshift(category);
-      currentId = category.parentId;
-    }
-    return chain;
-  };
-  const getAllCategoriesFlat = () => data.categories.map(cat => ({ ...cat, fullPath: getParentChain(cat.id).map(c => c.name).join(' > ') }));
-
-  const regenerateCategoryIds = (categories) => {
-    const updated = JSON.parse(JSON.stringify(categories));
-    const updateIds = (parentId = null, prefix = '') => {
-      const children = updated.filter(c => c.parentId === parentId).sort((a, b) => a.id.localeCompare(b.id));
-      children.forEach((child, index) => {
-        const newId = parentId ? `${prefix}.${index + 1}` : `CAT${index + 1}`;
-        const idx = updated.findIndex(c => c.id === child.id);
-        if (idx !== -1) updated[idx].categoryId = newId;
-        updateIds(child.id, newId);
-      });
-    };
-    updateIds(null, '');
-    return updated;
+  const toggleSubmenu = (id) => {
+    setExpandedMenus(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const generateId = (parentId = null) => {
-    if (parentId) {
-      const parent = data.categories.find(c => c.id === parentId);
-      if (parent) {
-        const childCount = data.categories.filter(c => c.parentId === parentId).length + 1;
-        return `${parent.categoryId}.${childCount}`;
-      }
-    }
-    const rootCount = data.categories.filter(c => c.parentId === null).length + 1;
-    return `CAT${rootCount}`;
-  };
-
-  const addCategory = () => {
-    if (!addingCategory.name.trim()) {
-      alert('Enter category name');
-      return;
-    }
-    const now = new Date().toISOString();
-    const categoryId = generateId(addingCategory.parentId);
-    const newCategory = {
-      id: 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
-      categoryId,
-      name: addingCategory.name.trim(),
-      description: addingCategory.description.trim(),
-      parentId: addingCategory.parentId,
-      fields: addingCategory.fields,
-      tags: addingCategory.tags,
-      priority: addingCategory.priority,
-      status: addingCategory.status,
-      createdAt: now,
-      modifiedAt: now,
-      logs: [{ action: 'Created', timestamp: now, details: 'Category created' }]
-    };
-    let updated = [...data.categories, newCategory];
-    updated = regenerateCategoryIds(updated);
-    setData({ categories: updated });
-    setAddingCategory({ name: '', parentId: null, description: '', fields: [], tags: [], priority: 'medium', status: 'active' });
-    alert('Category added');
-  };
-
-  const updateCategory = () => {
-    if (!editingCategory || !editingCategory.name.trim()) {
-      alert('Enter category name');
-      return;
-    }
-    const now = new Date().toISOString();
-    const updated = data.categories.map(cat =>
-      cat.id === editingCategory.id
-        ? {
-            ...cat,
-            name: editingCategory.name.trim(),
-            description: editingCategory.description.trim(),
-            parentId: editingCategory.parentId,
-            fields: editingCategory.fields,
-            tags: editingCategory.tags,
-            priority: editingCategory.priority,
-            status: editingCategory.status,
-            modifiedAt: now,
-            logs: [...(cat.logs || []), { action: 'Modified', timestamp: now, details: 'Category updated' }]
-          }
-        : cat
-    );
-    let final = regenerateCategoryIds(updated);
-    setData({ categories: final });
-    setEditingCategory(null);
-    alert('Category updated');
-  };
-
-  const deleteCategory = (id) => {
-    if (data.categories.some(cat => cat.parentId === id)) {
-      alert('Delete children first');
-      return;
-    }
-    if (!window.confirm('Delete this category?')) return;
-    const updated = data.categories.filter(cat => cat.id !== id);
-    let final = regenerateCategoryIds(updated);
-    setData({ categories: final });
-    if (editingCategory?.id === id) setEditingCategory(null);
-  };
-
-  const moveCategoryLevel = (categoryId, direction) => {
-    const category = data.categories.find(c => c.id === categoryId);
-    if (!category) return;
-    let newParentId = category.parentId;
-    if (direction === 'right') {
-      const siblings = data.categories.filter(c => c.parentId === category.parentId).sort((a, b) => a.id.localeCompare(b.id));
-      const currentIndex = siblings.findIndex(c => c.id === categoryId);
-      if (currentIndex <= 0) return;
-      newParentId = siblings[currentIndex - 1].id;
-    } else if (direction === 'left') {
-      if (!category.parentId) return;
-      const parent = data.categories.find(c => c.id === category.parentId);
-      newParentId = parent?.parentId || null;
-    }
-    const now = new Date().toISOString();
-    let updated = data.categories.map(cat =>
-      cat.id === categoryId
-        ? { ...cat, parentId: newParentId, modifiedAt: now, logs: [...(cat.logs || []), { action: 'Moved', timestamp: now, details: direction === 'right' ? 'Indented' : 'Outdented' }] }
-        : cat
-    );
-    updated = regenerateCategoryIds(updated);
-    setData({ categories: updated });
-  };
-
-  const moveCategoryOrder = (categoryId, direction) => {
-    const category = data.categories.find(c => c.id === categoryId);
-    if (!category) return;
-
-    const updated = JSON.parse(JSON.stringify(data.categories));
-    const idx = updated.findIndex(c => c.id === categoryId);
-    
-    if (idx === -1) return;
-    
-    if (direction === 'up' && idx > 0) {
-      const temp = updated[idx - 1];
-      updated[idx - 1] = updated[idx];
-      updated[idx] = temp;
-      setData({ categories: updated });
-    } else if (direction === 'down' && idx < updated.length - 1) {
-      const temp = updated[idx + 1];
-      updated[idx + 1] = updated[idx];
-      updated[idx] = temp;
-      setData({ categories: updated });
-    }
-  };
-
-  const duplicateCategoryWithHierarchy = (categoryId) => {
-    const category = data.categories.find(c => c.id === categoryId);
-    if (!category) return;
-    const now = new Date().toISOString();
-    const duplicatedCategories = [];
-    const duplicateRecursive = (cat, newParentId) => {
-      const newId = 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-      const newCategoryId = generateId(newParentId);
-      const duplicated = {
-        id: newId,
-        categoryId: newCategoryId,
-        name: cat.name + ' (Copy)',
-        description: cat.description,
-        parentId: newParentId,
-        fields: JSON.parse(JSON.stringify(cat.fields || [])),
-        tags: [...(cat.tags || [])],
-        priority: cat.priority,
-        status: cat.status,
-        createdAt: now,
-        modifiedAt: now,
-        logs: [{ action: 'Duplicated', timestamp: now, details: `From "${cat.name}"` }]
-      };
-      duplicatedCategories.push(duplicated);
-      const children = getChildrenByParentId(cat.id);
-      children.forEach(child => duplicateRecursive(child, newId));
-    };
-    duplicateRecursive(category, category.parentId);
-    let updated = [...data.categories, ...duplicatedCategories];
-    updated = regenerateCategoryIds(updated);
-    setData({ categories: updated });
-  };
-
-  const bulkEditStatus = () => {
-    if (selectedCategories.size === 0) {
-      alert('Select categories first');
-      return;
-    }
-    const now = new Date().toISOString();
-    const updated = data.categories.map(cat => {
-      if (selectedCategories.has(cat.id)) {
-        return {
-          ...cat,
-          status: bulkStatusInput,
-          modifiedAt: now,
-          logs: [...(cat.logs || []), { action: 'Bulk Edit', timestamp: now, details: `Status: ${bulkStatusInput}` }]
-        };
-      }
-      return cat;
+  const handleMenuClick = (id) => {
+    onNavigate(id);
+    setRecentPages(prev => {
+      const updated = [id, ...prev.filter(p => p !== id)].slice(0, 5);
+      return updated;
     });
-    setData({ categories: updated });
-    setSelectedCategories(new Set());
-    alert('Status updated');
+    if (window.innerWidth < 1024) {
+      onToggle();
+    }
   };
 
-  const bulkAddTags = () => {
-    if (selectedCategories.size === 0) {
-      alert('Select categories first');
-      return;
-    }
-    const tags = bulkTagsInput.split(',').map(t => t.trim()).filter(t => t);
-    if (tags.length === 0) return;
-    const now = new Date().toISOString();
-    const updated = data.categories.map(cat => {
-      if (selectedCategories.has(cat.id)) {
-        const combinedTags = [...new Set([...cat.tags, ...tags])];
-        return { ...cat, tags: combinedTags, modifiedAt: now, logs: [...(cat.logs || []), { action: 'Tags Added', timestamp: now, details: `Added: ${tags.join(', ')}` }] };
-      }
-      return cat;
-    });
-    setData({ categories: updated });
-    setBulkTagsInput('');
-    alert('Tags added');
-  };
-
-  const bulkDelete = () => {
-    if (selectedCategories.size === 0) {
-      alert('Select categories first');
-      return;
-    }
-    if (!window.confirm(`Delete ${selectedCategories.size} categories?`)) return;
-
-    const deletedCount = selectedCategories.size;
-    const now = new Date().toISOString();
-    
-    let updated = data.categories.filter(cat => !selectedCategories.has(cat.id));
-    updated = regenerateCategoryIds(updated);
-    
-    // Create a log entry in the first remaining category or create a system log
-    if (updated.length > 0) {
-      updated[0] = {
-        ...updated[0],
-        logs: [
-          ...(updated[0].logs || []),
-          { action: 'System', timestamp: now, details: `Bulk deleted ${deletedCount} categories` }
-        ]
-      };
-    }
-    
-    setData({ categories: updated });
-    setSelectedCategories(new Set());
-    alert(`Deleted ${deletedCount} categories`);
-  };
-
-  const addFieldToCategory = () => {
-    if (!newField.name.trim()) {
-      alert('Enter field name');
-      return;
-    }
-    const field = {
-      id: 'field_' + Date.now(),
-      name: newField.name.trim(),
-      type: newField.type,
-      required: newField.required,
-      options: (newField.type === 'dropdown' || newField.type === 'radio') ? newField.options.filter(o => o.trim()) : []
-    };
-    if (editingCategory) {
-      setEditingCategory(prev => ({ ...prev, fields: [...(prev.fields || []), field] }));
+  const toggleFavorite = (id) => {
+    const newFavorites = new Set(favorites);
+    if (newFavorites.has(id)) {
+      newFavorites.delete(id);
     } else {
-      setAddingCategory(prev => ({ ...prev, fields: [...prev.fields, field] }));
+      newFavorites.add(id);
     }
-    setNewField({ name: '', type: 'text', required: false, options: [] });
+    setFavorites(newFavorites);
   };
 
-  const removeField = (fieldId) => {
-    if (editingCategory) {
-      setEditingCategory(prev => ({ ...prev, fields: prev.fields.filter(f => f.id !== fieldId) }));
-    } else {
-      setAddingCategory(prev => ({ ...prev, fields: prev.fields.filter(f => f.id !== fieldId) }));
-    }
+  const filteredMenuItems = menuItems.map(item => ({
+    ...item,
+    submenu: item.submenu.filter(sub => 
+      sub.label.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  })).filter(item => 
+    item.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    item.submenu.length > 0
+  );
+
+  const getFlatMenuItems = () => {
+    return menuItems.flatMap(item => [
+      { ...item, submenu: [] },
+      ...(item.submenu || [])
+    ]);
   };
 
-  const toggleCategoryExpand = (id) => {
-    setExpandedCategories(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const toggleCategorySelect = (id) => {
-    const newSet = new Set(selectedCategories);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
-    setSelectedCategories(newSet);
-  };
-
-  const selectAll = () => {
-    if (selectedCategories.size === data.categories.length) {
-      setSelectedCategories(new Set());
-    } else {
-      setSelectedCategories(new Set(data.categories.map(c => c.id)));
-    }
-  };
-
-  const searchCategories = () => {
-    let results = data.categories;
-    if (categorySearch.trim()) {
-      const query = categorySearch.toLowerCase();
-      results = results.filter(cat => {
-        if (searchFilters.type === 'name') return cat.name.toLowerCase().includes(query);
-        if (searchFilters.type === 'id') return cat.categoryId.toLowerCase().includes(query);
-        if (searchFilters.type === 'tags') return cat.tags.some(tag => tag.toLowerCase().includes(query));
-        return true;
-      });
-    }
-    if (searchFilters.status !== 'all') {
-      results = results.filter(cat => cat.status === searchFilters.status);
-    }
-    return results.sort((a, b) => {
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
-      if (sortBy === 'date') return new Date(b.createdAt) - new Date(a.createdAt);
-      if (sortBy === 'priority') {
-        const pMap = { high: 0, medium: 1, low: 2 };
-        return pMap[a.priority] - pMap[b.priority];
-      }
-      return 0;
-    });
-  };
-
-  const handleJSONUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        let jsonData = JSON.parse(event.target.result);
-        if (!Array.isArray(jsonData)) jsonData = jsonData.categories || [];
-        const now = new Date().toISOString();
-        const newCategories = jsonData.map((cat, idx) => ({
-          id: 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
-          categoryId: cat.categoryId || `CAT${data.categories.length + idx + 1}`,
-          name: cat.name || `Category ${idx + 1}`,
-          description: cat.description || '',
-          parentId: cat.parentId || null,
-          fields: cat.fields || [],
-          tags: cat.tags || [],
-          priority: cat.priority || 'medium',
-          status: cat.status || 'active',
-          createdAt: now,
-          modifiedAt: now,
-          logs: [{ action: 'Imported', timestamp: now, details: 'JSON Import' }]
-        }));
-        let updated = [...data.categories, ...newCategories];
-        updated = regenerateCategoryIds(updated);
-        setData({ categories: updated });
-        setUploadMessage(`Success: ${newCategories.length} imported`);
-        setTimeout(() => setUploadMessage(''), 3000);
-      } catch (error) {
-        setUploadMessage(`Error: ${error.message}`);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleCSVUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const lines = event.target.result.split('\n').filter(line => line.trim());
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-        const now = new Date().toISOString();
-        const newCategories = lines.slice(1).map((line, idx) => {
-          const values = line.split(',').map(v => v.trim());
-          const obj = {};
-          headers.forEach((header, i) => {
-            obj[header] = values[i] || '';
-          });
-          return {
-            id: 'id_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
-            categoryId: obj.categoryid || `CAT${data.categories.length + idx + 1}`,
-            name: obj.name || `Category ${idx + 1}`,
-            description: obj.description || '',
-            parentId: obj.parentid || null,
-            fields: [],
-            tags: obj.tags ? obj.tags.split(';').map(t => t.trim()) : [],
-            priority: obj.priority || 'medium',
-            status: obj.status || 'active',
-            createdAt: now,
-            modifiedAt: now,
-            logs: [{ action: 'Imported', timestamp: now, details: 'CSV Import' }]
-          };
-        });
-        let updated = [...data.categories, ...newCategories];
-        updated = regenerateCategoryIds(updated);
-        setData({ categories: updated });
-        setUploadMessage(`Success: ${newCategories.length} imported`);
-        setTimeout(() => setUploadMessage(''), 3000);
-      } catch (error) {
-        setUploadMessage(`Error: ${error.message}`);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const downloadTemplate = (type) => {
-    if (type === 'json') {
-      const template = { categories: [{ categoryId: 'CAT1', name: 'Sample', description: 'Test', parentId: null, tags: ['tag1'], priority: 'medium', status: 'active', fields: [] }] };
-      const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'template.json';
-      link.click();
-    } else {
-      const csv = 'categoryid,name,description,parentid,tags,priority,status\nCAT1,Sample,Test,,tag1,medium,active';
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'template.csv';
-      link.click();
-    }
-  };
-
-  const exportData = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `categories-${Date.now()}.json`;
-    link.click();
-  };
-
-  const searchResults = searchCategories();
-  const filteredIds = categorySearch.trim() || searchFilters.status !== 'all' ? new Set(searchResults.map(c => c.id)) : null;
-
-  const stats = {
-    total: data.categories.length,
-    active: data.categories.filter(c => c.status === 'active').length,
-    highPriority: data.categories.filter(c => c.priority === 'high').length,
-    withFields: data.categories.filter(c => c.fields?.length > 0).length
-  };
-
-  const CategoryTreeView = ({ parentId = null, level = 0 }) => {
-    const categories = getChildrenByParentId(parentId);
-    if (categories.length === 0) return null;
-
-    return (
-      <div className={level > 0 ? `ml-8 border-l-2 ${isDarkMode ? 'border-slate-600' : 'border-slate-300'} pl-4 mt-2` : ''}>
-        {categories.map(cat => {
-          const children = getChildrenByParentId(cat.id);
-          const hasChildren = children.length > 0;
-          const isMatched = !filteredIds || filteredIds.has(cat.id);
-          const hasMatchedChildren = hasChildren && filteredIds && children.some(child => filteredIds.has(child.id));
-          const shouldShow = !filteredIds || isMatched || hasMatchedChildren;
-
-          if (!shouldShow) return null;
-
-          return (
-            <div key={cat.id} className="mb-3">
-              <div className={`border rounded-lg p-3 transition ${isDarkMode ? 'border-slate-600 bg-slate-800 hover:border-slate-500' : 'border-slate-300 bg-white hover:border-slate-400'}`}>
-                <div className="flex items-center gap-3 justify-between flex-wrap">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <input type="checkbox" checked={selectedCategories.has(cat.id)} onChange={() => toggleCategorySelect(cat.id)} className="w-4 h-4" />
-                    {hasChildren && <button onClick={() => toggleCategoryExpand(cat.id)} className={isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-800'}>{expandedCategories[cat.id] || (isMatched && hasMatchedChildren) ? <MdExpandMore size={18} /> : <MdChevronRight size={18} />}</button>}
-                    {!hasChildren && <div className="w-5"></div>}
-                    <MdFolder size={18} className={isDarkMode ? 'text-blue-400' : 'text-blue-600'} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{cat.name}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>{cat.categoryId}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${cat.status === 'active' ? (isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700') : (isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-700')}`}>{cat.status}</span>
-                      </div>
-                      {cat.description && <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{cat.description}</p>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => moveCategoryOrder(cat.id, 'up')} className={`p-1.5 rounded flex items-center gap-1 ${isDarkMode ? 'text-blue-400 hover:bg-blue-900' : 'text-blue-600 hover:bg-blue-100'}`} title="Move Up"><MdArrowBack size={14} style={{transform: 'rotate(90deg)'}} /></button>
-                    <button onClick={() => moveCategoryOrder(cat.id, 'down')} className={`p-1.5 rounded flex items-center gap-1 ${isDarkMode ? 'text-blue-400 hover:bg-blue-900' : 'text-blue-600 hover:bg-blue-100'}`} title="Move Down"><MdArrowForward size={14} style={{transform: 'rotate(90deg)'}} /></button>
-                    <button onClick={() => moveCategoryLevel(cat.id, 'left')} disabled={!cat.parentId} className={`p-1.5 rounded disabled:opacity-50 ${isDarkMode ? 'text-orange-400 hover:bg-orange-900' : 'text-orange-600 hover:bg-orange-100'}`} title="Outdent"><MdArrowBack size={14} /></button>
-                    <button onClick={() => moveCategoryLevel(cat.id, 'right')} className={`p-1.5 rounded ${isDarkMode ? 'text-orange-400 hover:bg-orange-900' : 'text-orange-600 hover:bg-orange-100'}`} title="Indent"><MdArrowForward size={14} /></button>
-                    <button onClick={() => setShowFieldEditor(cat.id)} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdDescription size={14} /></button>
-                    <button onClick={() => setEditingCategory({...cat})} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdEdit size={14} /></button>
-                    <button onClick={() => duplicateCategoryWithHierarchy(cat.id)} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdContentCopy size={14} /></button>
-                    <button onClick={() => setAddingCategory({...addingCategory, parentId: cat.id})} className={`p-1.5 rounded ${isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}><MdAdd size={14} /></button>
-                    <button onClick={() => deleteCategory(cat.id)} className={`p-1.5 rounded ${isDarkMode ? 'text-red-400 hover:bg-red-900' : 'text-red-600 hover:bg-red-100'}`}><MdDelete size={14} /></button>
-                  </div>
-                </div>
-              </div>
-              {hasChildren && (expandedCategories[cat.id] || (isMatched && hasMatchedChildren)) && <CategoryTreeView parentId={cat.id} level={level + 1} />}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  const favoriteItems = getFlatMenuItems().filter(item => favorites.has(item.id));
 
   return (
-    <div className={`min-h-screen p-6 transition-colors ${isDarkMode ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100'}`}>
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex justify-between items-start">
-          <div>
-            <h1 className={`text-4xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Category Manager</h1>
-            <p className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Manage hierarchical categories efficiently</p>
+    <>
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={onToggle}
+        ></div>
+      )}
+
+      <div
+        className={`fixed left-0 top-0 h-full bg-gradient-to-b from-slate-900 to-slate-800 transform transition-all duration-300 z-50 lg:z-10 lg:translate-x-0 overflow-y-auto ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${sidebarCompressed ? 'w-20' : 'w-64'}`}
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-slate-700 sticky top-0 bg-slate-900">
+          <div className="flex justify-between items-start mb-4">
+            {!sidebarCompressed && (
+              <div>
+                <h2 className="text-xl font-bold text-white">Admin</h2>
+                <p className="text-sm text-slate-400 mt-1">Shiv</p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSidebarCompressed(!sidebarCompressed)}
+                className="text-slate-400 hover:text-white hidden lg:block"
+                title={sidebarCompressed ? 'Expand' : 'Collapse'}
+              >
+                {sidebarCompressed ? <MdMenuOpen size={20} /> : <MdMenu size={20} />}
+              </button>
+              <button
+                onClick={onToggle}
+                className="lg:hidden text-slate-400 hover:text-white"
+              >
+                <MdClose size={20} />
+              </button>
+            </div>
           </div>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className={`px-4 py-2 rounded-lg font-medium transition ${isDarkMode ? 'bg-yellow-600 text-white hover:bg-yellow-700' : 'bg-slate-800 text-white hover:bg-slate-900'}`}>
-            {isDarkMode ? '☀️ Light' : '🌙 Dark'}
-          </button>
+          {!sidebarCompressed && <p className="text-sm text-slate-300 font-medium">Airr News</p>}
         </div>
 
-        <div className="flex gap-3 mb-8 flex-wrap">
-          <button onClick={() => setActiveWindow(activeWindow === 'logs' ? null : 'logs')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${activeWindow === 'logs' ? 'bg-indigo-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}><MdDescription size={16} /> Logs</button>
-          <button onClick={() => setActiveWindow(activeWindow === 'bulk' ? null : 'bulk')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${activeWindow === 'bulk' ? 'bg-orange-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}><MdFileUpload size={16} /> Bulk</button>
-          <button onClick={() => setShowStats(!showStats)} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${showStats ? 'bg-cyan-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}><MdShowChart size={16} /> Stats</button>
-          <button onClick={exportData} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${isDarkMode ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}><MdDownload size={16} /> Export</button>
-        </div>
-
-        {showStats && (
-          <div className={`mb-8 p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-4 rounded-lg text-white">
-                <div className="text-2xl font-bold">{stats.total}</div>
-                <p className="text-xs mt-1">Total</p>
-              </div>
-              <div className="bg-gradient-to-br from-green-600 to-green-700 p-4 rounded-lg text-white">
-                <div className="text-2xl font-bold">{stats.active}</div>
-                <p className="text-xs mt-1">Active</p>
-              </div>
-              <div className="bg-gradient-to-br from-red-600 to-red-700 p-4 rounded-lg text-white">
-                <div className="text-2xl font-bold">{stats.highPriority}</div>
-                <p className="text-xs mt-1">High Priority</p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-600 to-purple-700 p-4 rounded-lg text-white">
-                <div className="text-2xl font-bold">{stats.withFields}</div>
-                <p className="text-xs mt-1">With Fields</p>
-              </div>
+        {/* Search */}
+        {!sidebarCompressed && (
+          <div className="p-4 border-b border-slate-700">
+            <div className="relative">
+              <MdSearch className="absolute left-3 top-3 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Search menu..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </div>
         )}
 
-        {activeWindow === 'logs' && (
-          <div className={`mb-8 p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Activity Logs</h2>
-              <button onClick={() => setActiveWindow(null)} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-gray-900'}`}><MdClose size={20} /></button>
-            </div>
-            <div className="max-h-96 overflow-y-auto space-y-2">
-              {data.categories.flatMap(cat => (cat.logs || []).map((log, idx) => (
-                <div key={`${cat.id}-${idx}`} className={`p-3 rounded border-l-4 border-indigo-500 text-sm ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                  <div className="flex justify-between gap-2">
-                    <div><span className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{cat.name}</span> <span className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{log.action}</span></div>
-                    <span className={`text-xs ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(log.timestamp).toLocaleString()}</span>
-                  </div>
-                </div>
-              ))).reverse().slice(0, 30)}
+        {/* Favorites Section */}
+        {!sidebarCompressed && favoriteItems.length > 0 && (
+          <div className="p-4 border-b border-slate-700">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase mb-3">Favorites</h3>
+            <div className="space-y-1">
+              {favoriteItems.map(item => {
+                const IconComponent = item.icon;
+                const isActive = currentPage === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleMenuClick(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm transition ${
+                      isActive
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <IconComponent size={16} />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {activeWindow === 'bulk' && (
-          <div className={`mb-8 p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Bulk Operations</h2>
-              <button onClick={() => setActiveWindow(null)} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-gray-900'}`}><MdClose size={20} /></button>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className={`p-6 rounded-lg border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
-                <h3 className={`font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><MdFileUpload size={18} /> Upload</h3>
-                <div className="space-y-4">
-                  <label className={`flex items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer transition ${isDarkMode ? 'border-slate-500 hover:bg-slate-600 bg-slate-800' : 'border-slate-400 hover:bg-slate-100 bg-white'}`}>
-                    <div className="text-center">
-                      <MdFileUpload className={`mx-auto mb-2 ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`} size={24} />
-                      <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>JSON File</p>
-                      <input type="file" accept=".json" onChange={handleJSONUpload} className="hidden" />
-                    </div>
-                  </label>
-                  <label className={`flex items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer transition ${isDarkMode ? 'border-slate-500 hover:bg-slate-600 bg-slate-800' : 'border-slate-400 hover:bg-slate-100 bg-white'}`}>
-                    <div className="text-center">
-                      <MdFileUpload className={`mx-auto mb-2 ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`} size={24} />
-                      <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>CSV File</p>
-                      <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
-                    </div>
-                  </label>
-                  <div className="flex gap-2">
-                    <button onClick={() => downloadTemplate('json')} className="flex-1 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-sm font-medium">JSON Template</button>
-                    <button onClick={() => downloadTemplate('csv')} className="flex-1 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-sm font-medium">CSV Template</button>
-                  </div>
-                  {uploadMessage && (
-                    <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${uploadMessage.includes('Success') ? (isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-800') : (isDarkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-800')}`}>
-                      {uploadMessage.includes('Success') ? <MdCheckCircle size={16} /> : <MdWarning size={16} />}
-                      {uploadMessage}
-                    </div>
+        {/* Main Menu */}
+        <div className="p-4 space-y-2">
+          {(searchQuery ? filteredMenuItems : menuItems).map(item => {
+            const IconComponent = item.icon;
+            const isActive = currentPage === item.id;
+            const hasSubmenu = item.submenu.length > 0;
+            const isExpanded = expandedMenus[item.id];
+            const isFavorite = favorites.has(item.id);
+
+            return (
+              <div key={item.id}>
+                <button
+                  onClick={() => {
+                    if (hasSubmenu) {
+                      toggleSubmenu(item.id);
+                    } else {
+                      handleMenuClick(item.id);
+                    }
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition duration-200 relative group ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                  }`}
+                  title={sidebarCompressed ? item.label : ''}
+                >
+                  <IconComponent size={20} />
+                  {!sidebarCompressed && (
+                    <>
+                      <span className="flex-1 text-left text-sm font-medium">{item.label}</span>
+                      <div className="flex items-center gap-1">
+                        {!hasSubmenu && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFavorite(item.id);
+                            }}
+                            className="hover:text-yellow-400"
+                          >
+                            {isFavorite ? <MdFavorite size={16} /> : <MdFavoriteBorder size={16} />}
+                          </button>
+                        )}
+                        {hasSubmenu && (
+                          isExpanded ? <MdExpandMore size={18} /> : <MdChevronRight size={18} />
+                        )}
+                      </div>
+                    </>
                   )}
-                </div>
-              </div>
-              <div className={`p-6 rounded-lg border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
-                <h3 className={`font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Bulk Edit ({selectedCategories.size})</h3>
-                <div className="space-y-4">
-                  <button onClick={selectAll} className={`text-xs flex items-center gap-1 ${isDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-cyan-600 hover:text-cyan-700'}`}><MdSelectAll size={14} /> {selectedCategories.size === data.categories.length ? 'Deselect All' : 'Select All'}</button>
-                  <div>
-                    <label className={`text-sm block mb-2 font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Status</label>
-                    <select value={bulkStatusInput} onChange={(e) => setBulkStatusInput(e.target.value)} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="archived">Archived</option>
-                    </select>
+                </button>
+
+                {/* Submenu */}
+                {hasSubmenu && isExpanded && !sidebarCompressed && (
+                  <div className="ml-4 mt-1 space-y-1 border-l border-slate-700 pl-3">
+                    {item.submenu.map(subitem => {
+                      const SubIcon = subitem.icon;
+                      const isSubActive = currentPage === subitem.id;
+                      const isSubFavorite = favorites.has(subitem.id);
+
+                      return (
+                        <button
+                          key={subitem.id}
+                          onClick={() => handleMenuClick(subitem.id)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded text-xs font-medium transition ${
+                            isSubActive
+                              ? 'bg-blue-500 text-white'
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                          }`}
+                        >
+                          <SubIcon size={14} />
+                          <span className="flex-1 text-left truncate">{subitem.label}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFavorite(subitem.id);
+                            }}
+                            className="hover:text-yellow-400"
+                          >
+                            {isSubFavorite ? <MdFavorite size={12} /> : <MdFavoriteBorder size={12} />}
+                          </button>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <button onClick={bulkEditStatus} disabled={selectedCategories.size === 0} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">Update Status</button>
-                  <div>
-                    <label className={`text-sm block mb-2 font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Add Tags</label>
-                    <input type="text" placeholder="tag1, tag2" value={bulkTagsInput} onChange={(e) => setBulkTagsInput(e.target.value)} className={`w-full px-3 py-2 rounded text-sm mb-2 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`} />
-                    <button onClick={bulkAddTags} disabled={selectedCategories.size === 0} className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium">Add Tags</button>
-                  </div>
-                  <button onClick={bulkDelete} disabled={selectedCategories.size === 0} className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 text-sm font-medium">Delete Selected</button>
-                </div>
+                )}
               </div>
+            );
+          })}
+        </div>
+
+        {/* Recent Pages */}
+        {!sidebarCompressed && recentPages.length > 0 && (
+          <div className="p-4 border-t border-slate-700">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase mb-3">Recent</h3>
+            <div className="space-y-1">
+              {recentPages.slice(0, 3).map(pageId => {
+                const allItems = getFlatMenuItems();
+                const page = allItems.find(p => p.id === pageId);
+                if (!page) return null;
+                const PageIcon = page.icon;
+                return (
+                  <button
+                    key={pageId}
+                    onClick={() => handleMenuClick(pageId)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition"
+                  >
+                    <MdHistory size={14} />
+                    <span className="truncate">{page.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className={`border rounded-xl p-6 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-            <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{editingCategory ? <MdEdit size={18} /> : <MdAdd size={18} />} {editingCategory ? 'Edit' : 'Add'}</h3>
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              <div>
-                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Parent</label>
-                <select value={editingCategory ? editingCategory.parentId || '' : addingCategory.parentId || ''} onChange={(e) => { const id = e.target.value || null; if (editingCategory) setEditingCategory({...editingCategory, parentId: id}); else setAddingCategory({...addingCategory, parentId: id}); }} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`}>
-                  <option value="">Root Level</option>
-                  {getAllCategoriesFlat().filter(c => !editingCategory || c.id !== editingCategory.id).map(c => <option key={c.id} value={c.id}>{c.categoryId} - {c.fullPath}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Name</label>
-                <input type="text" value={editingCategory ? editingCategory.name : addingCategory.name} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, name: e.target.value}) : setAddingCategory({...addingCategory, name: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} />
-              </div>
-              <div>
-                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Description</label>
-                <textarea value={editingCategory ? editingCategory.description : addingCategory.description} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, description: e.target.value}) : setAddingCategory({...addingCategory, description: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} rows="2" />
-              </div>
-              <div>
-                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Priority</label>
-                <select value={editingCategory ? editingCategory.priority : addingCategory.priority} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, priority: e.target.value}) : setAddingCategory({...addingCategory, priority: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-              <div>
-                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Status</label>
-                <select value={editingCategory ? editingCategory.status : addingCategory.status} onChange={(e) => editingCategory ? setEditingCategory({...editingCategory, status: e.target.value}) : setAddingCategory({...addingCategory, status: e.target.value})} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="archived">Archived</option>
-                </select>
-              </div>
-              <div>
-                <label className={`text-sm font-medium block mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Tags</label>
-                <input type="text" value={editingCategory ? editingCategory.tags.join(', ') : addingCategory.tags.join(', ')} onChange={(e) => { const tags = e.target.value.split(',').map(t => t.trim()).filter(t => t); editingCategory ? setEditingCategory({...editingCategory, tags}) : setAddingCategory({...addingCategory, tags}); }} className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} placeholder="tag1, tag2" />
-              </div>
-              <div className={`flex gap-2 pt-4 border-t ${isDarkMode ? 'border-slate-600' : 'border-slate-300'}`}>
-                {editingCategory ? (
-                  <>
-                    <button onClick={updateCategory} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm flex items-center justify-center gap-2"><MdSave size={14} /> Update</button>
-                    <button onClick={() => setEditingCategory(null)} className={`px-4 py-2 rounded-lg ${isDarkMode ? 'bg-slate-600 text-white hover:bg-slate-500' : 'bg-slate-300 text-gray-900 hover:bg-slate-400'}`}><MdClose size={14} /></button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={addCategory} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm flex items-center justify-center gap-2"><MdAdd size={14} /> Add</button>
-                    <button onClick={() => setAddingCategory({ name: '', parentId: null, description: '', fields: [], tags: [], priority: 'medium', status: 'active' })} className={`px-4 py-2 rounded-lg ${isDarkMode ? 'bg-slate-600 text-white hover:bg-slate-500' : 'bg-slate-300 text-gray-900 hover:bg-slate-400'}`}><MdClose size={14} /></button>
-                  </>
-                )}
-              </div>
-            </div>
+        {/* Footer Actions */}
+        {!sidebarCompressed && (
+          <div className="p-4 border-t border-slate-700 space-y-2 sticky bottom-0 bg-slate-900">
+            <button className="w-full flex items-center gap-3 px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition text-sm">
+              <MdSettings size={18} />
+              <span>Settings</span>
+            </button>
+            <button className="w-full flex items-center gap-3 px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition text-sm">
+              <MdHelp size={18} />
+              <span>Help</span>
+            </button>
+            <button className="w-full flex items-center gap-3 px-4 py-2 text-slate-300 hover:text-red-400 hover:bg-slate-700 rounded-lg transition text-sm">
+              <MdLogout size={18} />
+              <span>Logout</span>
+            </button>
           </div>
+        )}
+      </div>
+    </>
+  );
+};
 
-          <div className="lg:col-span-2 space-y-6">
-            <div className={`border rounded-xl p-6 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-              <h3 className={`font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><MdSearch size={18} /> Search</h3>
-              <div className="space-y-3">
-                <input type="text" value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} placeholder="Search..." className={`w-full px-3 py-2 rounded text-sm ${isDarkMode ? 'bg-slate-700 border border-slate-600 text-white' : 'bg-slate-50 border border-slate-300 text-gray-900'}`} />
-                <div className="flex gap-2">
-                  <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex-1 px-3 py-2 rounded text-sm font-medium ${isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}>Filters</button>
-                  <button onClick={() => { setCategorySearch(''); setSearchFilters({ type: 'name', status: 'all' }); }} className={`flex-1 px-3 py-2 rounded text-sm font-medium ${isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}>Reset</button>
-                </div>
-                {showAdvancedFilters && (
-                  <div className={`space-y-3 p-3 rounded border text-sm ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
-                    <select value={searchFilters.type} onChange={(e) => setSearchFilters({...searchFilters, type: e.target.value})} className={`w-full px-2 py-1 rounded text-xs ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
-                      <option value="name">Name</option>
-                      <option value="id">ID</option>
-                      <option value="tags">Tags</option>
-                    </select>
-                    <select value={searchFilters.status} onChange={(e) => setSearchFilters({...searchFilters, status: e.target.value})} className={`w-full px-2 py-1 rounded text-xs ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
-                      <option value="all">All Status</option>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="archived">Archived</option>
-                    </select>
-                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className={`w-full px-2 py-1 rounded text-xs ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
-                      <option value="name">Sort: Name</option>
-                      <option value="date">Sort: Date</option>
-                      <option value="priority">Sort: Priority</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
+// Enhanced Header Component
+const AdminHeader = ({ onToggleSidebar }) => {
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [showNotifications, setShowNotifications] = useState(false);
 
-            <div className={`border rounded-xl p-6 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-              <h3 className={`font-bold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><MdFolder size={18} /> Categories {filteredIds && `(${searchResults.length})`}</h3>
-              <div className="max-h-96 overflow-y-auto">
-                {data.categories.length === 0 ? (
-                  <div className={`text-center py-8 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}><MdFolder size={32} className="mx-auto mb-2 opacity-50" /><p>No categories</p></div>
-                ) : (
-                  <CategoryTreeView />
-                )}
-              </div>
-            </div>
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatDate = currentTime.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const formatTime = currentTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const notifications = [
+    { id: 1, message: '3 new tasks assigned', time: '2 mins ago' },
+    { id: 2, message: 'Category update approved', time: '1 hour ago' },
+    { id: 3, message: 'User registration pending', time: '3 hours ago' },
+  ];
+
+  return (
+    <div className="bg-white border-b border-slate-300 sticky top-0 z-30 shadow-sm">
+      <div className="px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onToggleSidebar}
+            className="lg:hidden text-slate-600 hover:text-slate-900"
+          >
+            <MdMenu size={24} />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Admin Dashboard</h1>
           </div>
         </div>
-      </div>
-
-      {showFieldEditor && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className={`border rounded-xl shadow-2xl max-w-2xl w-full max-h-96 overflow-y-auto ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-            <div className={`p-6 border-b sticky top-0 flex justify-between items-center ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-              <h3 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Fields</h3>
-              <button onClick={() => setShowFieldEditor(null)} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-gray-900'}`}><MdClose size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className={`p-4 rounded border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-300'}`}>
-                <h4 className={`font-bold mb-3 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Add Field</h4>
-                <div className="space-y-2 text-sm">
-                  <input type="text" value={newField.name} onChange={(e) => setNewField({...newField, name: e.target.value})} placeholder="Field name" className={`w-full px-2 py-1 rounded ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`} />
-                  <select value={newField.type} onChange={(e) => setNewField({...newField, type: e.target.value})} className={`w-full px-2 py-1 rounded ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`}>
-                    {fieldTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                  {(newField.type === 'dropdown' || newField.type === 'radio') && <input type="text" value={newField.options.join(', ')} onChange={(e) => setNewField({...newField, options: e.target.value.split(',')})} placeholder="Options" className={`w-full px-2 py-1 rounded ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white border border-slate-300 text-gray-900'}`} />}
-                  <label className={`flex gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><input type="checkbox" checked={newField.required} onChange={(e) => setNewField({...newField, required: e.target.checked})} /> Required</label>
-                  <button onClick={addFieldToCategory} className="w-full px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">Add</button>
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <p className="text-sm font-medium text-slate-900">{formatDate}</p>
+            <p className="text-sm text-slate-600">{formatTime}</p>
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative text-slate-600 hover:text-slate-900"
+            >
+              <MdNotifications size={24} />
+              <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+            </button>
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
+                <div className="p-4 border-b border-slate-200">
+                  <h3 className="font-bold text-slate-900">Notifications</h3>
                 </div>
-              </div>
-              <div>
-                <h4 className={`font-bold mb-2 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Existing</h4>
-                <div className="space-y-1">
-                  {(editingCategory?.fields || addingCategory.fields || []).map(f => (
-                    <div key={f.id} className={`p-2 rounded flex justify-between items-center text-sm ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-gray-900'}`}>
-                      <span>{f.name} <span className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>({fieldTypes.find(t => t.value === f.type)?.label})</span></span>
-                      <button onClick={() => removeField(f.id)} className={`${isDarkMode ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}><MdDelete size={14} /></button>
+                <div className="max-h-64 overflow-y-auto">
+                  {notifications.map(notif => (
+                    <div key={notif.id} className="p-4 border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
+                      <p className="text-sm font-medium text-slate-900">{notif.message}</p>
+                      <p className="text-xs text-slate-500 mt-1">{notif.time}</p>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
-export default CategoryManager;
+// Page Components
+const Dashboard = () => (
+  <RecruitmentApp />
+);
+
+const Categories = ({ onCategoriesChange }) => (
+  <CategoryManager onCategoriesChange={onCategoriesChange} />
+);
+
+const UserExpandancy = () => (
+  <div className="p-6">
+    <h2 className="text-3xl font-bold text-slate-900 mb-4">User Dependency Management</h2>
+    <div className="bg-white p-6 rounded-lg border border-slate-300">
+      <p className="text-slate-600">Manage user dependencies, relationships and interdependencies</p>
+    </div>
+  </div>
+);
+
+const TaskExpandancy = () => (
+  <div className="p-6">
+    <h2 className="text-3xl font-bold text-slate-900 mb-4">Task Dependency Management</h2>
+    <div className="bg-white p-6 rounded-lg border border-slate-300">
+      <p className="text-slate-600">Manage task dependencies, workflows and task relationships</p>
+    </div>
+  </div>
+);
+
+// Main App Component
+const App = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [sidebarCompressed, setSidebarCompressed] = useState(false);
+  const [sharedCategories, setSharedCategories] = useState([]);
+  const [sharedUsers, setSharedUsers] = useState([]);
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'categories':
+        return <Categories onCategoriesChange={setSharedCategories} />;
+      case 'users':
+        return <UserManagement categories={sharedCategories} onUsersChange={setSharedUsers} />;
+      case 'tasks':
+        return <TaskManagement categories={sharedCategories} users={sharedUsers} />;
+      case 'user-expandancy':
+        return <UserExpandancy />;
+      case 'task-expandancy':
+        return <TaskExpandancy />;
+      default:
+        return <Dashboard />;
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-slate-50">
+      <AdminSidebar
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        currentPage={currentPage}
+        onNavigate={setCurrentPage}
+        sidebarCompressed={sidebarCompressed}
+        setSidebarCompressed={setSidebarCompressed}
+      />
+
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${
+        sidebarCompressed ? 'lg:ml-20' : 'lg:ml-64'
+      }`}>
+        <AdminHeader onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+        <main className="flex-1 overflow-y-auto">
+          {renderPage()}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default App;
